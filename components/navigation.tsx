@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Bell, Home, Heart, User, Settings, LogOut } from "lucide-react"
+import { tokenStorage } from "@/lib/api-client"
 
 const navigationItems = [
   { href: "/", label: "Browse", icon: Home },
@@ -26,7 +27,7 @@ export function Navigation() {
   const router = useRouter() // Added router for logout functionality
 
   const handleSignOut = () => {
-    // Clear any authentication state/tokens here if needed
+    tokenStorage.clear()
     router.push("/login")
   }
 
@@ -71,13 +72,14 @@ export function Navigation() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+              <button type="button" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
                   <AvatarImage src="/diverse-user-avatars.png" alt="User" />
                   <AvatarFallback>JD</AvatarFallback>
                 </Avatar>
-              </Button>
+              </button>
             </DropdownMenuTrigger>
+            
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuItem asChild>
                 <Link href="/profile">

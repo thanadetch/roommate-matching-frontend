@@ -10,11 +10,13 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { authApi, tokenStorage, ApiError } from "@/lib/api-client" 
 
 export function RegisterForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null) 
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -65,18 +67,34 @@ export function RegisterForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setServerError(null)
 
     if (!validateForm()) return
 
     setIsLoading(true)
-
-    // Simulate API call
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      // Redirect to home page after successful registration
-      router.push("/")
-    } catch (error) {
-      console.error("Registration failed:", error)
+      // 1) Register จริง
+      await authApi.register({
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim(),
+        password: formData.password,
+      })
+
+      // 2) Auto-login แล้วเก็บ token
+      const { access_token } = await authApi.login({
+        email: formData.email.trim(),
+        password: formData.password,
+      })
+      tokenStorage.set(access_token)
+
+      // 3) ไปหน้าหลักหรือ next param
+      const params = new URLSearchParams(window.location.search)
+      const next = params.get("next") || "/"
+      router.replace(next)
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Registration failed"
+      setServerError(msg)
     } finally {
       setIsLoading(false)
     }

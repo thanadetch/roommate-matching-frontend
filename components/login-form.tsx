@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { authApi, tokenStorage, ApiError } from "@/lib/api-client"
 
 export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
@@ -46,11 +47,18 @@ export function LoginForm() {
 
     // Simulate API call
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      // Redirect to home page after successful login
-      router.push("/")
-    } catch (error) {
-      console.error("Login failed:", error)
+      const { access_token } = await authApi.login({
+        email: formData.email,
+        password: formData.password,
+      })
+      tokenStorage.set(access_token)
+
+      const params = new URLSearchParams(window.location.search)
+      const next = params.get("next") || "/"
+      router.replace(next)
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Login failed"
+      setErrors((prev) => ({ ...prev, password: msg })) // โชว์ error ใต้ฟิลด์
     } finally {
       setIsLoading(false)
     }

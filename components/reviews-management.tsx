@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -9,212 +9,213 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Star, MessageSquare, Shield, Lock, Edit } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Star, MessageSquare, Shield, Lock, Edit, Trash } from "lucide-react"
+import { ApiError, jwt, reviewsApi, tokenStorage } from "@/lib/api-client"
 
 interface Review {
   id: string
   reviewerId: string
-  reviewerName: string
   revieweeId: string
-  revieweeName: string
-  matchId: string
-  matchTitle: string
   rating?: number
   comment?: string
-  isAnonymous: boolean
+  isAnonymous?: boolean
   createdAt: string
+  // ถ้า gateway enrich โปรไฟล์ฝั่ง reviewee
+  revieweeProfile?: {
+    firstName?: string
+    lastName?: string
+  }
 }
-
-// Mock reviews data
-const mockReviews = {
-  given: [
-    {
-      id: "rev4",
-      reviewerId: "user1",
-      reviewerName: "John Doe",
-      revieweeId: "user2",
-      revieweeName: "Emma Wilson",
-      matchId: "match2",
-      matchTitle: "Modern Loft Space",
-      rating: 5,
-      comment:
-        "Emma was a fantastic host! The space was exactly as described and she was very welcoming. Highly recommend!",
-      isAnonymous: false,
-      createdAt: "2024-01-16T11:45:00Z",
-    },
-    {
-      id: "rev5",
-      reviewerId: "user1",
-      reviewerName: "Anonymous",
-      revieweeId: "user5",
-      revieweeName: "Sarah Chen",
-      matchId: "match5",
-      matchTitle: "Downtown Apartment",
-      rating: 3,
-      comment:
-        "The living situation was okay but there were some communication issues. The space was clean but not as quiet as expected.",
-      isAnonymous: true,
-      createdAt: "2024-01-10T16:30:00Z",
-    },
-  ],
-}
-
-// Mock available matches for writing reviews
-const availableMatches = [
-  {
-    id: "match6",
-    counterpartyName: "Alex Johnson",
-    listingTitle: "Cozy Downtown Apartment",
-    matchedAt: "2024-01-18T10:00:00Z",
-  },
-]
 
 export function ReviewsManagement() {
-  const [reviews, setReviews] = useState(mockReviews)
-  const [newReview, setNewReview] = useState({
-    matchId: "",
-    rating: 0,
-    comment: "",
-  })
-  const [selectedMatch, setSelectedMatch] = useState<any>(null)
-  const [editingReview, setEditingReview] = useState<Review | null>(null)
-  const [editReviewData, setEditReviewData] = useState({
+  const [mounted, setMounted] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [reviews, setReviews] = useState<Review[]>([])
+
+  // form: create
+  const [openCreate, setOpenCreate] = useState(false)
+  const [createForm, setCreateForm] = useState<{ revieweeId: string; rating: number; comment: string }>({
+    revieweeId: "",
     rating: 0,
     comment: "",
   })
 
-  const handleWriteReview = () => {
-    if (!selectedMatch || newReview.rating === 0) return
+  // form: edit
+  const [editing, setEditing] = useState<Review | null>(null)
+  const [editForm, setEditForm] = useState<{ rating: number; comment: string }>({ rating: 0, comment: "" })
 
-    const review = {
-      id: `rev${Date.now()}`,
-      reviewerId: "user1",
-      reviewerName: "John Doe",
-      revieweeId: selectedMatch.counterpartyId,
-      revieweeName: selectedMatch.counterpartyName,
-      matchId: selectedMatch.id,
-      matchTitle: selectedMatch.listingTitle,
-      rating: newReview.rating,
-      comment: newReview.comment,
-      isAnonymous: false,
-      createdAt: new Date().toISOString(),
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // อ่าน userId (sub) จาก JWT หลัง mount แล้วโหลดรีวิว
+  useEffect(() => {
+    let alive = true
+    async function bootstrap() {
+      try {
+        const t = tokenStorage.get()
+        const payload = t ? jwt.decode(t) : null
+        const sub = payload?.sub || null
+        if (alive) setUserId(sub)
+
+        if (!sub) {
+          if (alive) {
+            setLoading(false)
+            setError("Not authenticated")
+          }
+          return
+        }
+
+        const res = await reviewsApi.getGivenBy(sub)
+        if (alive) setReviews(res.results || [])
+      } catch (e) {
+        if (alive) setError(e instanceof ApiError ? e.message : "Failed to load reviews")
+      } finally {
+        if (alive) setLoading(false)
+      }
     }
+    bootstrap()
+    return () => {
+      alive = false
+    }
+  }, [])
 
-    setReviews((prev) => ({
-      ...prev,
-      given: [review, ...prev.given],
-    }))
+  const StarRating = ({ rating, onRatingChange, readonly = false }: any) => (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          onClick={() => !readonly && onRatingChange?.(star)}
+          className={`${readonly ? "cursor-default" : "cursor-pointer hover:scale-110"} transition-transform`}
+          disabled={readonly}
+        >
+          <Star className={`h-5 w-5 ${star <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} />
+        </button>
+      ))}
+    </div>
+  )
 
-    // Reset form
-    setNewReview({
-      matchId: "",
-      rating: 0,
-      comment: "",
-    })
-    setSelectedMatch(null)
-
-    console.log("Writing review:", review)
+  const humanName = (r: Review) => {
+    const fn = r.revieweeProfile?.firstName || ""
+    const ln = r.revieweeProfile?.lastName || ""
+    const name = `${fn} ${ln}`.trim()
+    return name || r.revieweeId
   }
 
-  const handleEditReview = (review: Review) => {
-    setEditingReview(review)
-    setEditReviewData({
-      rating: review.rating || 0,
-      comment: review.comment || "",
-    })
+  async function handleCreate() {
+    if (!createForm.revieweeId || createForm.rating === 0) return
+    setSaving(true)
+    setError(null)
+    try {
+      const created = await reviewsApi.create({
+        revieweeId: createForm.revieweeId,
+        rating: createForm.rating,
+        comment: createForm.comment || undefined,
+      })
+      // prepend
+      setReviews((prev) => [created, ...prev])
+      setCreateForm({ revieweeId: "", rating: 0, comment: "" })
+      setOpenCreate(false)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to create review")
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleSaveEditedReview = () => {
-    if (!editingReview || editReviewData.rating === 0) return
-
-    setReviews((prev) => ({
-      ...prev,
-      given: prev.given.map((review) =>
-        review.id === editingReview.id
-          ? {
-              ...review,
-              rating: editReviewData.rating,
-              comment: editReviewData.comment,
-            }
-          : review,
-      ),
-    }))
-
-    // Reset editing state
-    setEditingReview(null)
-    setEditReviewData({
-      rating: 0,
-      comment: "",
-    })
-
-    console.log("Edited review:", editingReview.id)
+  function onEditClick(r: Review) {
+    setEditing(r)
+    setEditForm({ rating: r.rating || 0, comment: r.comment || "" })
   }
 
-  const StarRating = ({ rating, onRatingChange, readonly = false }: any) => {
-    return (
-      <div className="flex gap-1">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <button
-            key={star}
-            type="button"
-            onClick={() => !readonly && onRatingChange?.(star)}
-            className={`${readonly ? "cursor-default" : "cursor-pointer hover:scale-110"} transition-transform`}
-            disabled={readonly}
-          >
-            <Star className={`h-5 w-5 ${star <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} />
-          </button>
-        ))}
-      </div>
-    )
+  async function handleSaveEdit() {
+    if (!editing) return
+    if (editForm.rating === 0) return
+    setSaving(true)
+    setError(null)
+    try {
+      const updated = await reviewsApi.update(editing.id, {
+        rating: editForm.rating,
+        comment: editForm.comment || undefined,
+      })
+      setReviews((prev) => prev.map((x) => (x.id === editing.id ? updated : x)))
+      setEditing(null)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to update review")
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const ReviewCard = ({ review }: { review: Review }) => {
-    return (
-      <Card className="hover:shadow-md transition-shadow">
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <Avatar className="h-10 w-10">
-                <AvatarImage src="/diverse-user-avatars.png" alt="You" />
-                <AvatarFallback>Y</AvatarFallback>
-              </Avatar>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold">You</h3>
-                  <Badge variant="outline" className="text-xs">
-                    <Lock className="h-3 w-3 mr-1" />
-                    Private
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">You reviewed {review.revieweeName}</p>
+  async function handleDelete(id: string) {
+    setSaving(true)
+    setError(null)
+    try {
+      await reviewsApi.delete(id)
+      setReviews((prev) => prev.filter((x) => x.id !== id))
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to delete review")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const ReviewCard = ({ review }: { review: Review }) => (
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <Avatar className="h-10 w-10">
+              <AvatarImage src="/diverse-user-avatars.png" alt="You" />
+              <AvatarFallback>U</AvatarFallback>
+            </Avatar>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold">You</h3>
+                <Badge variant="outline" className="text-xs">
+                  <Lock className="h-3 w-3 mr-1" />
+                  Private
+                </Badge>
               </div>
-            </div>
-            <div className="text-right">
-              {review.rating && <StarRating rating={review.rating} readonly />}
-              <p className="text-xs text-muted-foreground mt-1">{new Date(review.createdAt).toLocaleDateString()}</p>
+              <p className="text-sm text-muted-foreground">You reviewed {humanName(review)}</p>
             </div>
           </div>
-
-          <div className="space-y-3">
-            <div className="text-sm text-muted-foreground">
-              <span className="font-medium">Match:</span> {review.matchTitle}
-            </div>
-            {review.comment && (
-              <div className="p-3 bg-muted rounded-lg">
-                <p className="text-sm">{review.comment}</p>
-              </div>
-            )}
-            <div className="flex justify-end pt-2">
-              <Button variant="outline" size="sm" onClick={() => handleEditReview(review)} className="text-xs">
-                <Edit className="h-3 w-3 mr-1" />
-                Edit Review
-              </Button>
-            </div>
+          <div className="text-right">
+            {review.rating && <StarRating rating={review.rating} readonly />}
+            <p className="text-xs text-muted-foreground mt-1">
+              {review.createdAt ? new Date(review.createdAt).toLocaleDateString() : ""}
+            </p>
           </div>
-        </CardContent>
-      </Card>
-    )
-  }
+        </div>
+
+        <div className="space-y-3">
+          {review.comment && (
+            <div className="p-3 bg-muted rounded-lg">
+              <p className="text-sm">{review.comment}</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => onEditClick(review)} className="text-xs">
+              <Edit className="h-3 w-3 mr-1" />
+              Edit
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleDelete(review.id)} className="text-xs">
+              <Trash className="h-3 w-3 mr-1" />
+              Delete
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  if (!mounted) return null
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -223,123 +224,116 @@ export function ReviewsManagement() {
         <p className="text-muted-foreground">Your private reviews - only you can see reviews you've written</p>
       </div>
 
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            <h2 className="text-xl font-semibold">Reviews I've Given ({reviews.given.length})</h2>
-          </div>
+      {error && (
+        <Alert className="mb-4 border-destructive/40 bg-destructive/10">
+          <AlertDescription className="text-destructive">{error}</AlertDescription>
+        </Alert>
+      )}
 
-          {availableMatches.length > 0 && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button>
-                  <Star className="h-4 w-4 mr-2" />
-                  Write Review
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Write a Private Review</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Select Match</Label>
-                    <div className="mt-2 space-y-2">
-                      {availableMatches.map((match) => (
-                        <div
-                          key={match.id}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                            selectedMatch?.id === match.id ? "border-primary bg-primary/5" : "hover:bg-muted"
-                          }`}
-                          onClick={() => setSelectedMatch(match)}
-                        >
-                          <div className="font-medium text-sm">{match.counterpartyName}</div>
-                          <div className="text-xs text-muted-foreground">{match.listingTitle}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {selectedMatch && (
-                    <>
-                      <div>
-                        <Label>Rating</Label>
-                        <div className="mt-2">
-                          <StarRating
-                            rating={newReview.rating}
-                            onRatingChange={(rating: number) => setNewReview((prev) => ({ ...prev, rating }))}
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label htmlFor="comment">Comment (Optional)</Label>
-                        <Textarea
-                          id="comment"
-                          placeholder="Share your private thoughts about this roommate experience..."
-                          value={newReview.comment}
-                          onChange={(e) => setNewReview((prev) => ({ ...prev, comment: e.target.value }))}
-                          rows={4}
-                          className="mt-2"
-                        />
-                      </div>
-
-                      <div className="flex gap-2">
-                        <Button onClick={handleWriteReview} disabled={newReview.rating === 0} className="flex-1">
-                          Submit Private Review
-                        </Button>
-                        <DialogTrigger asChild>
-                          <Button variant="outline">Cancel</Button>
-                        </DialogTrigger>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="h-5 w-5" />
+          <h2 className="text-xl font-semibold">Reviews I've Given ({reviews.length})</h2>
         </div>
 
-        <div className="space-y-4">
-          {reviews.given.length === 0 ? (
-            <Card className="p-12 text-center">
-              <div className="space-y-4">
-                <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground" />
-                <h3 className="text-xl font-semibold">No reviews given yet</h3>
-                <p className="text-muted-foreground">
-                  Private reviews you write for your roommates and hosts will appear here.
-                </p>
-              </div>
-            </Card>
-          ) : (
-            <div className="grid gap-4">
-              {reviews.given.map((review) => (
-                <ReviewCard key={review.id} review={review} />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Dialog open={!!editingReview} onOpenChange={(open) => !open && setEditingReview(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Private Review</DialogTitle>
-          </DialogHeader>
-          {editingReview && (
+        {/* ปุ่มเขียนรีวิวใหม่ — ชั่วคราวให้ใส่ revieweeId เอง */}
+        <Dialog open={openCreate} onOpenChange={setOpenCreate}>
+          <DialogTrigger asChild>
+            <Button>
+              <Star className="h-4 w-4 mr-2" />
+              Write Review
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Write a Private Review</DialogTitle>
+            </DialogHeader>
             <div className="space-y-4">
-              <div className="p-3 bg-muted rounded-lg">
-                <div className="font-medium text-sm">{editingReview.revieweeName}</div>
-                <div className="text-xs text-muted-foreground">{editingReview.matchTitle}</div>
+              <div>
+                <Label htmlFor="reviewee">Reviewee User ID</Label>
+                <Input
+                  id="reviewee"
+                  placeholder="UUID of the user you matched with"
+                  value={createForm.revieweeId}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, revieweeId: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  *ชั่วคราว จนกว่าจะผูกกับ Matches (จะเลือกจากรายชื่อได้)
+                </p>
               </div>
 
               <div>
                 <Label>Rating</Label>
                 <div className="mt-2">
                   <StarRating
-                    rating={editReviewData.rating}
-                    onRatingChange={(rating: number) => setEditReviewData((prev) => ({ ...prev, rating }))}
+                    rating={createForm.rating}
+                    onRatingChange={(r: number) => setCreateForm((p) => ({ ...p, rating: r }))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="comment">Comment (Optional)</Label>
+                <Textarea
+                  id="comment"
+                  placeholder="Share your private thoughts about this roommate experience..."
+                  value={createForm.comment}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, comment: e.target.value }))}
+                  rows={4}
+                  className="mt-2"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <Button onClick={handleCreate} disabled={createForm.rating === 0 || saving} className="flex-1">
+                  {saving ? "Submitting..." : "Submit Review"}
+                </Button>
+                <Button variant="outline" onClick={() => setOpenCreate(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* List */}
+      {loading ? (
+        <Card className="p-12 text-center">Loading…</Card>
+      ) : reviews.length === 0 ? (
+        <Card className="p-12 text-center">
+          <div className="space-y-4">
+            <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground" />
+            <h3 className="text-xl font-semibold">No reviews given yet</h3>
+            <p className="text-muted-foreground">Private reviews you write for your roommates will appear here.</p>
+          </div>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {reviews.map((r) => (
+            <ReviewCard key={r.id} review={r} />
+          ))}
+        </div>
+      )}
+
+      {/* Edit dialog */}
+      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Private Review</DialogTitle>
+          </DialogHeader>
+          {editing && (
+            <div className="space-y-4">
+              <div className="p-3 bg-muted rounded-lg text-sm">
+                Review for: <span className="font-medium">{humanName(editing)}</span>
+              </div>
+
+              <div>
+                <Label>Rating</Label>
+                <div className="mt-2">
+                  <StarRating
+                    rating={editForm.rating}
+                    onRatingChange={(r: number) => setEditForm((p) => ({ ...p, rating: r }))}
                   />
                 </div>
               </div>
@@ -348,19 +342,19 @@ export function ReviewsManagement() {
                 <Label htmlFor="edit-comment">Comment (Optional)</Label>
                 <Textarea
                   id="edit-comment"
-                  placeholder="Share your private thoughts about this roommate experience..."
-                  value={editReviewData.comment}
-                  onChange={(e) => setEditReviewData((prev) => ({ ...prev, comment: e.target.value }))}
+                  placeholder="Update your private thoughts..."
+                  value={editForm.comment}
+                  onChange={(e) => setEditForm((p) => ({ ...p, comment: e.target.value }))}
                   rows={4}
                   className="mt-2"
                 />
               </div>
 
               <div className="flex gap-2">
-                <Button onClick={handleSaveEditedReview} disabled={editReviewData.rating === 0} className="flex-1">
-                  Save Changes
+                <Button onClick={handleSaveEdit} disabled={editForm.rating === 0 || saving} className="flex-1">
+                  {saving ? "Saving..." : "Save Changes"}
                 </Button>
-                <Button variant="outline" onClick={() => setEditingReview(null)}>
+                <Button variant="outline" onClick={() => setEditing(null)}>
                   Cancel
                 </Button>
               </div>
@@ -372,9 +366,8 @@ export function ReviewsManagement() {
       <Alert className="mt-8">
         <Shield className="h-4 w-4" />
         <AlertDescription>
-          <strong>Private Reviews:</strong> All reviews are completely private and only visible to you. You cannot see
-          reviews others have written about you. Use this space to keep personal notes about your roommate experiences
-          for future reference.
+          <strong>Private Reviews:</strong> Only you can see the reviews you write. We’ll connect this flow to your
+          Matches list soon so you can pick a person without pasting their ID.
         </AlertDescription>
       </Alert>
     </div>

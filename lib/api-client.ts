@@ -10,11 +10,17 @@ const apiClient = axios.create({
   timeout: 10000, // 10 seconds timeout
 })
 
+export const tokenStorage = {
+  get: () => (typeof window !== "undefined" ? localStorage.getItem("auth_token") : null),
+  set: (t: string) => localStorage.setItem("auth_token", t),
+  clear: () => localStorage.removeItem("auth_token"),
+}
+
 apiClient.interceptors.request.use(
   (config) => {
     // Add auth token if available (client-side only)
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("auth_token")
+      const token = tokenStorage.get()
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
       }
@@ -116,13 +122,37 @@ export const matchesApi = {
     }),
 }
 
+export const jwt = {
+  decode: (token: string) => {
+    try {
+      const [, payload] = token.split(".")
+      return JSON.parse(typeof window !== "undefined" ? atob(payload) : Buffer.from(payload, "base64").toString())
+    } catch {
+      return null
+    }
+  },
+}
+
 // Profile API functions
 export const profileApi = {
-  get: () => apiRequest<any>("/profile/me", { method: "GET" }),
+  // GET /profiles/email/:email
+  getByEmail: (email: string) =>
+    apiRequest<{ result?: any }>(`/profiles/email/${encodeURIComponent(email)}`, { method: "GET" }),
 
-  update: (data: any) =>
-    apiRequest<any>("/profile/me", {
-      method: "PATCH",
+  // GET /profiles/:id
+  getById: (id: string) => apiRequest<{ result?: any }>(`/profiles/${id}`, { method: "GET" }),
+
+  // PUT /profiles/:id
+  updateById: (id: string, data: any) =>
+    apiRequest<any>(`/profiles/${id}`, {
+      method: "PUT",
+      data,
+    }),
+
+  // (ถ้าจำเป็นต้องสร้างใหม่) POST /profiles
+  create: (data: any) =>
+    apiRequest<any>(`/profiles`, {
+      method: "POST",
       data,
     }),
 }
@@ -143,16 +173,38 @@ export const notificationsApi = {
 
 // Reviews API functions
 export const reviewsApi = {
-  getAll: (userId?: string) =>
-    apiRequest<{ received: any[]; given: any[]; averageRating: number }>(`/reviews`, {
+  // GET /reviews?reviewerId=...
+  getGivenBy: (reviewerId: string) =>
+    apiRequest<{ results: any[] }>(`/reviews`, {
       method: "GET",
-      params: { userId: userId || "current_user" },
+      params: { reviewerId },
     }),
 
-  create: (data: { matchId: string; rating: number; comment?: string; isAnonymous: boolean }) =>
-    apiRequest<any>("/reviews", {
+  // GET /reviews?revieweeId=...
+  getForUser: (revieweeId: string) =>
+    apiRequest<{ results: any[] }>(`/reviews`, {
+      method: "GET",
+      params: { revieweeId },
+    }),
+
+  // POST /reviews  (reviewerId จะอ่านจาก JWT ใน gateway)
+  create: (data: { revieweeId: string; rating: number; comment?: string }) =>
+    apiRequest<any>(`/reviews`, {
       method: "POST",
       data,
+    }),
+
+  // PUT /reviews/:id
+  update: (id: string, data: { rating?: number; comment?: string; revieweeId?: string }) =>
+    apiRequest<any>(`/reviews/${id}`, {
+      method: "PUT",
+      data,
+    }),
+
+  // DELETE /reviews/:id
+  delete: (id: string) =>
+    apiRequest<any>(`/reviews/${id}`, {
+      method: "DELETE",
     }),
 }
 
@@ -165,4 +217,26 @@ export class ApiError extends Error {
     super(message)
     this.name = "ApiError"
   }
+}
+
+
+
+export const authApi = {
+  login: (data: { email: string; password: string }) =>
+    apiRequest<{
+      access_token: string
+    }>("/auth/login", {
+      method: "POST",
+      data,
+    }),
+  register: (data: { firstName: string; lastName: string; email: string; password: string }) =>
+    apiRequest<{
+      id: string
+      email: string
+      firstName: string
+      lastName: string
+    }>("/auth/register", {
+      method: "POST",
+      data,
+    }),
 }
