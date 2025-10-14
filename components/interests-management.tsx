@@ -2,15 +2,26 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Heart, Check, X, DollarSign, Cigarette, Dog, Moon, Volume2, MessageSquare } from "lucide-react"
+import {
+  Heart,
+  Check,
+  X,
+  DollarSign,
+  Cigarette,
+  Dog,
+  Moon,
+  Volume2,
+  MessageSquare,
+  MapPin,
+  Calendar,
+} from "lucide-react"
 
 // Mock data for interests
 const mockInterests = {
@@ -148,132 +159,149 @@ export function InterestsManagement() {
 
   const getLifestyleIcons = (lifestyle: any) => {
     const icons = []
-    if (!lifestyle.smoking) icons.push(<Cigarette key="no-smoke" className="h-3 w-3" />)
-    if (lifestyle.pet) icons.push(<Dog key="pet" className="h-3 w-3" />)
-    if (lifestyle.quiet) icons.push(<Volume2 key="quiet" className="h-3 w-3" />)
-    if (lifestyle.nightOwl) icons.push(<Moon key="night" className="h-3 w-3" />)
+    if (!lifestyle.smoking) icons.push({ icon: <Cigarette className="h-3 w-3" />, label: "No Smoking" })
+    if (lifestyle.pet) icons.push({ icon: <Dog className="h-3 w-3" />, label: "Pet Friendly" })
+    if (lifestyle.quiet) icons.push({ icon: <Volume2 className="h-3 w-3" />, label: "Quiet" })
+    if (lifestyle.nightOwl) icons.push({ icon: <Moon className="h-3 w-3" />, label: "Night Owl" })
     return icons
   }
 
-  const InterestRow = ({ interest, showActions = false, status }: any) => (
-    <TableRow key={interest.id}>
-      <TableCell>
-        <div className="flex items-center space-x-3">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src="/diverse-user-avatars.png" alt={interest.seekerName} />
-            <AvatarFallback>
-              {interest.seekerName
-                .split(" ")
-                .map((n: string) => n[0])
-                .join("")}
-            </AvatarFallback>
-          </Avatar>
-          <div>
-            <div className="font-medium">{interest.seekerName}</div>
-            <div className="text-sm text-muted-foreground">{interest.listingTitle}</div>
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        <div className="space-y-1">
-          <Badge variant="outline" className="text-xs">
-            {interest.seekerProfile.gender}
-          </Badge>
-          <div className="text-xs text-muted-foreground flex items-center">
-            <DollarSign className="h-3 w-3 mr-1" />${interest.seekerProfile.budgetMin}-$
-            {interest.seekerProfile.budgetMax}
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        <div className="flex gap-1">
-          {getLifestyleIcons(interest.seekerProfile.lifestyle).map((icon, idx) => (
-            <Badge key={idx} variant="outline" className="p-1">
-              {icon}
-            </Badge>
-          ))}
-        </div>
-      </TableCell>
-      <TableCell>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="ghost" size="sm">
-              <MessageSquare className="h-4 w-4 mr-1" />
-              View
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Message from {interest.seekerName}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm">{interest.message}</p>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Sent {new Date(interest.createdAt).toLocaleDateString()}
+  const InterestCard = ({ interest, showActions = false, status }: any) => (
+    <Card key={interest.id} className="mb-4">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-3">
+              <Avatar className="h-10 w-10">
+                <AvatarImage src="/diverse-user-avatars.png" alt={interest.seekerName} />
+                <AvatarFallback>
+                  {interest.seekerName
+                    .split(" ")
+                    .map((n: string) => n[0])
+                    .join("")}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <h3 className="font-semibold text-base">{interest.seekerName}</h3>
+                <div className="flex items-center text-sm text-muted-foreground">
+                  <MapPin className="h-3 w-3 mr-1" />
+                  {interest.listingTitle}
+                </div>
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
-      </TableCell>
-      <TableCell>
-        {showActions ? (
-          <div className="flex gap-1">
-            <Button size="sm" onClick={() => handleAcceptInterest(interest.id)} className="h-8">
-              <Check className="h-4 w-4 mr-1" />
-              Accept
-            </Button>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => setSelectedInterest(interest.id)} className="h-8">
-                  <X className="h-4 w-4 mr-1" />
-                  Reject
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Reject Interest</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Optionally provide a reason for rejecting this interest. This helps improve the matching process.
-                  </p>
-                  <Textarea
-                    placeholder="e.g., Looking for someone with different lifestyle preferences..."
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    rows={3}
-                  />
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => handleRejectInterest(interest.id, rejectionReason)}
-                      variant="outline"
-                      className="flex-1"
-                    >
-                      Reject Interest
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        setSelectedInterest(null)
-                        setRejectionReason("")
-                      }}
-                    >
-                      Cancel
-                    </Button>
+
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center text-emerald-600 font-semibold">
+                <DollarSign className="h-4 w-4" />
+                {interest.seekerProfile.budgetMin}-{interest.seekerProfile.budgetMax}/mo
+              </div>
+
+              <Badge variant="outline" className="text-xs">
+                {interest.seekerProfile.gender}
+              </Badge>
+
+              <div className="flex items-center gap-1">
+                {getLifestyleIcons(interest.seekerProfile.lifestyle).map((item, idx) => (
+                  <Badge key={idx} variant="outline" className="p-1">
+                    {item.icon}
+                  </Badge>
+                ))}
+              </div>
+
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs">
+                    <MessageSquare className="h-3 w-3 mr-1" />
+                    View Message
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Message from {interest.seekerName}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="p-4 bg-muted rounded-lg">
+                      <p className="text-sm">{interest.message}</p>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Sent {new Date(interest.createdAt).toLocaleDateString()}
+                    </div>
                   </div>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogContent>
+              </Dialog>
+
+              <div className="flex items-center text-muted-foreground">
+                <Calendar className="h-3 w-3 mr-1" />
+                {new Date(interest.createdAt).toLocaleDateString()}
+              </div>
+            </div>
           </div>
-        ) : (
-          <Badge variant={status === "accepted" ? "default" : "secondary"}>
-            {status === "accepted" ? "Accepted" : "Rejected"}
-          </Badge>
-        )}
-      </TableCell>
-    </TableRow>
+
+          <div className="flex items-center gap-2 ml-4">
+            {showActions ? (
+              <>
+                <Button size="sm" onClick={() => handleAcceptInterest(interest.id)} className="h-9">
+                  <Check className="h-4 w-4 mr-1" />
+                  Accept
+                </Button>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedInterest(interest.id)}
+                      className="h-9"
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Reject
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Reject Interest</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Optionally provide a reason for rejecting this interest. This helps improve the matching
+                        process.
+                      </p>
+                      <Textarea
+                        placeholder="e.g., Looking for someone with different lifestyle preferences..."
+                        value={rejectionReason}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        rows={3}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => handleRejectInterest(interest.id, rejectionReason)}
+                          variant="outline"
+                          className="flex-1"
+                        >
+                          Reject Interest
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            setSelectedInterest(null)
+                            setRejectionReason("")
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </>
+            ) : (
+              <Badge variant={status === "accepted" ? "default" : "secondary"} className="h-9 px-4">
+                {status === "accepted" ? "Accepted" : "Rejected"}
+              </Badge>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 
   return (
@@ -300,111 +328,57 @@ export function InterestsManagement() {
         </TabsList>
 
         <TabsContent value="pending">
-          <Card>
-            <CardHeader>
-              <CardTitle>Pending Interests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {interests.pending.length === 0 ? (
-                <div className="text-center py-8">
-                  <Heart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No pending interests</h3>
-                  <p className="text-muted-foreground">New interest requests will appear here.</p>
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Seeker</TableHead>
-                        <TableHead>Profile</TableHead>
-                        <TableHead>Lifestyle</TableHead>
-                        <TableHead>Message</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {interests.pending.map((interest) => (
-                        <InterestRow key={interest.id} interest={interest} showActions={true} />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {interests.pending.length === 0 ? (
+            <Card>
+              <CardContent className="text-center py-8">
+                <Heart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No pending interests</h3>
+                <p className="text-muted-foreground">New interest requests will appear here.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div>
+              {interests.pending.map((interest) => (
+                <InterestCard key={interest.id} interest={interest} showActions={true} />
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="accepted">
-          <Card>
-            <CardHeader>
-              <CardTitle>Accepted Interests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {interests.accepted.length === 0 ? (
-                <div className="text-center py-8">
-                  <Check className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No accepted interests</h3>
-                  <p className="text-muted-foreground">Accepted interests will create matches and appear here.</p>
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Seeker</TableHead>
-                        <TableHead>Profile</TableHead>
-                        <TableHead>Lifestyle</TableHead>
-                        <TableHead>Message</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {interests.accepted.map((interest) => (
-                        <InterestRow key={interest.id} interest={interest} status="accepted" />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {interests.accepted.length === 0 ? (
+            <Card>
+              <CardContent className="text-center py-8">
+                <Check className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No accepted interests</h3>
+                <p className="text-muted-foreground">Accepted interests will create matches and appear here.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div>
+              {interests.accepted.map((interest) => (
+                <InterestCard key={interest.id} interest={interest} status="accepted" />
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="rejected">
-          <Card>
-            <CardHeader>
-              <CardTitle>Rejected Interests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {interests.rejected.length === 0 ? (
-                <div className="text-center py-8">
-                  <X className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No rejected interests</h3>
-                  <p className="text-muted-foreground">Rejected interests will appear here for your records.</p>
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Seeker</TableHead>
-                        <TableHead>Profile</TableHead>
-                        <TableHead>Lifestyle</TableHead>
-                        <TableHead>Message</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {interests.rejected.map((interest) => (
-                        <InterestRow key={interest.id} interest={interest} status="rejected" />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {interests.rejected.length === 0 ? (
+            <Card>
+              <CardContent className="text-center py-8">
+                <X className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No rejected interests</h3>
+                <p className="text-muted-foreground">Rejected interests will appear here for your records.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div>
+              {interests.rejected.map((interest) => (
+                <InterestCard key={interest.id} interest={interest} status="rejected" />
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

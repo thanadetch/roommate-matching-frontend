@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ArrowLeft, MapPin, DollarSign, Calendar, Home } from "lucide-react"
+import { ArrowLeft, MapPin, DollarSign, Calendar, Home, Info } from "lucide-react"
 
 interface ListingFormData {
   title: string
@@ -103,137 +103,165 @@ export function CreateListing() {
   return (
     <div className="container mx-auto px-4 py-6 max-w-2xl">
       <div className="mb-6">
-        <Button variant="ghost" size="sm" asChild className="mb-4">
+        <Button variant="ghost" size="sm" asChild className="mb-3 rounded-lg hover:bg-emerald-50">
           <Link href="/host/listings">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to My Listings
           </Link>
         </Button>
-        <h1 className="text-3xl font-bold font-space-grotesk mb-2">Create New Listing</h1>
-        <p className="text-muted-foreground">Fill out the details to list your room for potential roommates.</p>
+        <h1 className="text-2xl font-bold text-balance mb-1">Create New Listing</h1>
+        <p className="text-muted-foreground text-sm">Fill out the details to list your room for potential roommates.</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Home className="h-5 w-5" />
+      <Card className="rounded-2xl border-0 shadow-sm">
+        <CardHeader className="border-b border-gray-100 p-4">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center">
+              <Home className="h-4 w-4 text-emerald-600" />
+            </div>
             Listing Details
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <CardContent className="p-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {/* Title */}
-            <div className="space-y-2">
-              <Label htmlFor="title">Title *</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="title" className="text-sm font-medium">
+                Title <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="title"
                 placeholder="e.g., Cozy Downtown Apartment"
                 value={formData.title}
                 onChange={(e) => handleInputChange("title", e.target.value)}
-                className={errors.title ? "border-destructive" : ""}
+                className={`rounded-xl h-9 ${errors.title ? "border-red-300 focus-visible:ring-red-500" : "border-gray-200 focus-visible:ring-emerald-500"}`}
               />
-              {errors.title && <p className="text-sm text-destructive">{errors.title}</p>}
+              {errors.title && <p className="text-sm text-red-500">{errors.title}</p>}
             </div>
 
             {/* Location */}
-            <div className="space-y-2">
-              <Label htmlFor="location">Location *</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="location" className="text-sm font-medium">
+                Location <span className="text-red-500">*</span>
+              </Label>
               <div className="relative">
-                <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="location"
                   placeholder="e.g., Downtown Seattle, Capitol Hill"
                   value={formData.location}
                   onChange={(e) => handleInputChange("location", e.target.value)}
-                  className={`pl-10 ${errors.location ? "border-destructive" : ""}`}
+                  className={`pl-10 rounded-xl h-9 ${errors.location ? "border-red-300 focus-visible:ring-red-500" : "border-gray-200 focus-visible:ring-emerald-500"}`}
                 />
               </div>
-              {errors.location && <p className="text-sm text-destructive">{errors.location}</p>}
+              {errors.location && <p className="text-sm text-red-500">{errors.location}</p>}
             </div>
 
             {/* Price and Available From */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">Monthly Rent *</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="price" className="text-sm font-medium">
+                  Monthly Rent <span className="text-red-500">*</span>
+                </Label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="price"
                     type="number"
                     placeholder="1200"
                     value={formData.pricePerMonth}
                     onChange={(e) => handleInputChange("pricePerMonth", e.target.value)}
-                    className={`pl-10 ${errors.pricePerMonth ? "border-destructive" : ""}`}
+                    className={`pl-10 rounded-xl h-9 ${errors.pricePerMonth ? "border-red-300 focus-visible:ring-red-500" : "border-gray-200 focus-visible:ring-emerald-500"}`}
                   />
                 </div>
-                {errors.pricePerMonth && <p className="text-sm text-destructive">{errors.pricePerMonth}</p>}
+                {errors.pricePerMonth && <p className="text-sm text-red-500">{errors.pricePerMonth}</p>}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="availableFrom">Available From</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="availableFrom" className="text-sm font-medium">
+                  Available From
+                </Label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="availableFrom"
                     type="date"
                     value={formData.availableFrom}
                     onChange={(e) => handleInputChange("availableFrom", e.target.value)}
-                    className="pl-10"
+                    className="pl-10 rounded-xl h-9 border-gray-200 focus-visible:ring-emerald-500"
                   />
                 </div>
               </div>
             </div>
 
             {/* House Rules */}
-            <div className="space-y-4">
-              <Label>House Rules</Label>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">House Rules</Label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
                   <div className="space-y-0.5">
-                    <Label htmlFor="noSmoking">No Smoking</Label>
-                    <p className="text-sm text-muted-foreground">Smoking is not allowed in the property</p>
+                    <Label htmlFor="noSmoking" className="text-sm font-medium cursor-pointer">
+                      No Smoking
+                    </Label>
+                    <p className="text-xs text-muted-foreground">Smoking is not allowed in the property</p>
                   </div>
                   <Switch
                     id="noSmoking"
                     checked={formData.rules.noSmoking}
                     onCheckedChange={(checked) => handleRuleChange("noSmoking", checked)}
+                    className="data-[state=checked]:bg-emerald-500"
                   />
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
                   <div className="space-y-0.5">
-                    <Label htmlFor="noPet">No Pets</Label>
-                    <p className="text-sm text-muted-foreground">Pets are not allowed in the property</p>
+                    <Label htmlFor="noPet" className="text-sm font-medium cursor-pointer">
+                      No Pets
+                    </Label>
+                    <p className="text-xs text-muted-foreground">Pets are not allowed in the property</p>
                   </div>
                   <Switch
                     id="noPet"
                     checked={formData.rules.noPet}
                     onCheckedChange={(checked) => handleRuleChange("noPet", checked)}
+                    className="data-[state=checked]:bg-emerald-500"
                   />
                 </div>
               </div>
             </div>
 
             {/* Description */}
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="description" className="text-sm font-medium">
+                Description
+              </Label>
               <Textarea
                 id="description"
                 placeholder="Describe your room, the living situation, amenities, and what you're looking for in a roommate..."
                 value={formData.description}
                 onChange={(e) => handleInputChange("description", e.target.value)}
-                rows={5}
+                rows={4}
+                className="rounded-xl border-gray-200 focus-visible:ring-emerald-500 resize-none text-sm"
               />
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Include details about the room, shared spaces, neighborhood, and your ideal roommate.
               </p>
             </div>
 
             {/* Submit Buttons */}
-            <div className="flex gap-3 pt-4">
-              <Button type="submit" disabled={isLoading} className="flex-1">
+            <div className="flex gap-3 pt-2">
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-600 rounded-xl shadow-sm h-9"
+              >
                 {isLoading ? "Creating..." : "Create Listing"}
               </Button>
-              <Button type="button" variant="outline" asChild>
+              <Button
+                type="button"
+                variant="outline"
+                asChild
+                className="rounded-xl border-gray-200 hover:bg-gray-50 bg-transparent h-9"
+              >
                 <Link href="/host/listings">Cancel</Link>
               </Button>
             </div>
@@ -241,8 +269,9 @@ export function CreateListing() {
         </CardContent>
       </Card>
 
-      <Alert className="mt-6">
-        <AlertDescription>
+      <Alert className="mt-4 rounded-xl border-emerald-200 bg-emerald-50/50">
+        <Info className="h-4 w-4 text-emerald-600" />
+        <AlertDescription className="text-sm">
           Your listing will be visible to potential roommates immediately after creation. You can edit or close it
           anytime from your listings page.
         </AlertDescription>

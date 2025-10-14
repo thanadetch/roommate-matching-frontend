@@ -3,12 +3,10 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Plus, Eye, Edit, XCircle, Calendar, DollarSign, MapPin } from "lucide-react"
+import { Plus, Eye, Edit, XCircle, Calendar, DollarSign, MapPin, Home, Users } from "lucide-react"
 
 // Mock data for current user's listings
 const mockUserListings = [
@@ -42,24 +40,7 @@ const mockUserListings = [
 ]
 
 export function MyListings() {
-  const [selectedListings, setSelectedListings] = useState<string[]>([])
   const [listings, setListings] = useState(mockUserListings)
-
-  const handleSelectListing = (listingId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedListings([...selectedListings, listingId])
-    } else {
-      setSelectedListings(selectedListings.filter((id) => id !== listingId))
-    }
-  }
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedListings(listings.map((listing) => listing.id))
-    } else {
-      setSelectedListings([])
-    }
-  }
 
   const handleCloseListing = (listingId: string) => {
     setListings(
@@ -68,34 +49,14 @@ export function MyListings() {
     console.log("Closing listing:", listingId)
   }
 
-  const handleBulkClose = () => {
-    const openSelectedListings = selectedListings.filter((id) => {
-      const listing = listings.find((l) => l.id === id)
-      return listing?.status === "OPEN"
-    })
-
-    setListings(
-      listings.map((listing) =>
-        openSelectedListings.includes(listing.id) ? { ...listing, status: "CLOSED" as const } : listing,
-      ),
-    )
-    setSelectedListings([])
-    console.log("Bulk closing listings:", openSelectedListings)
-  }
-
-  const canBulkClose = selectedListings.some((id) => {
-    const listing = listings.find((l) => l.id === id)
-    return listing?.status === "OPEN"
-  })
-
   return (
-    <div className="container mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold font-space-grotesk mb-2">My Listings</h1>
-          <p className="text-muted-foreground">Manage your room listings and track interest</p>
+          <h1 className="text-3xl font-bold text-balance mb-2">My Listings</h1>
+          <p className="text-muted-foreground text-sm">Manage your room listings and track interest</p>
         </div>
-        <Button asChild>
+        <Button asChild className="bg-emerald-500 hover:bg-emerald-600 rounded-xl shadow-sm">
           <Link href="/host/listings/new">
             <Plus className="h-4 w-4 mr-2" />
             Create Listing
@@ -104,127 +65,126 @@ export function MyListings() {
       </div>
 
       {listings.length === 0 ? (
-        <Card className="p-12 text-center">
-          <div className="space-y-4">
-            <div className="text-4xl">🏠</div>
-            <h3 className="text-xl font-semibold">No listings yet</h3>
-            <p className="text-muted-foreground">Create your first listing to start finding roommates.</p>
-            <Button asChild>
-              <Link href="/host/listings/new">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Listing
-              </Link>
-            </Button>
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-2">
+            <h2 className="text-lg font-semibold">Your Listings ({listings.length})</h2>
           </div>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Your Listings ({listings.length})</CardTitle>
-              {selectedListings.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">{selectedListings.length} selected</span>
-                  <Button variant="outline" size="sm" onClick={handleBulkClose} disabled={!canBulkClose}>
-                    <XCircle className="h-4 w-4 mr-1" />
-                    Close Selected
-                  </Button>
+          <Card className="rounded-2xl border-0 shadow-sm bg-gradient-to-br from-white to-emerald-50/30">
+            <CardContent className="p-16 text-center">
+              <div className="space-y-4">
+                <div className="mx-auto w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <Home className="h-8 w-8 text-emerald-600" />
                 </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">
-                      <Checkbox
-                        checked={selectedListings.length === listings.length}
-                        onCheckedChange={handleSelectAll}
-                        aria-label="Select all listings"
-                      />
-                    </TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Interest</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {listings.map((listing) => (
-                    <TableRow key={listing.id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedListings.includes(listing.id)}
-                          onCheckedChange={(checked) => handleSelectListing(listing.id, checked as boolean)}
-                          aria-label={`Select ${listing.title}`}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{listing.title}</div>
-                          <div className="text-sm text-muted-foreground flex items-center">
-                            <MapPin className="h-3 w-3 mr-1" />
-                            {listing.location}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={listing.status === "OPEN" ? "default" : "secondary"}>{listing.status}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <DollarSign className="h-3 w-3 mr-1" />
+                <h3 className="text-xl font-semibold">No listings yet</h3>
+                <p className="text-muted-foreground max-w-sm mx-auto">
+                  Create your first listing to start finding roommates.
+                </p>
+                <Button asChild className="bg-emerald-500 hover:bg-emerald-600 rounded-xl mt-4">
+                  <Link href="/host/listings/new">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Listing
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold mb-3">Your Listings ({listings.length})</h2>
+
+          <div className="space-y-3">
+            {listings.map((listing) => (
+              <Card
+                key={listing.id}
+                className="rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all bg-white"
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-base mb-1 truncate">{listing.title}</h3>
+                      <div className="flex items-center text-sm text-muted-foreground mb-2.5">
+                        <MapPin className="h-3.5 w-3.5 mr-1 flex-shrink-0" />
+                        {listing.location}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+                        <div className="flex items-center text-emerald-600 font-medium">
+                          <DollarSign className="h-4 w-4 mr-0.5" />
                           {listing.pricePerMonth}/mo
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {listing.interestCount} {listing.interestCount === 1 ? "person" : "people"}
+                        <div className="flex items-center text-muted-foreground">
+                          <Users className="h-4 w-4 mr-1.5" />
+                          <span className="font-medium text-emerald-600">{listing.interestCount}</span>
+                          <span className="ml-1">{listing.interestCount === 1 ? "person" : "people"} interested</span>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm flex items-center">
-                          <Calendar className="h-3 w-3 mr-1" />
+                        <div className="flex items-center text-muted-foreground">
+                          <Calendar className="h-4 w-4 mr-1.5" />
                           {new Date(listing.createdAt).toLocaleDateString()}
                         </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link href={`/listing/${listing.id}`}>
-                              <Eye className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link href={`/host/listings/${listing.id}/edit`}>
-                              <Edit className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                          {listing.status === "OPEN" && (
-                            <Button variant="ghost" size="sm" onClick={() => handleCloseListing(listing.id)}>
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge
+                        variant={listing.status === "OPEN" ? "default" : "secondary"}
+                        className={
+                          listing.status === "OPEN" ? "bg-emerald-500 hover:bg-emerald-600 rounded-lg" : "rounded-lg"
+                        }
+                      >
+                        {listing.status}
+                      </Badge>
+
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-50"
+                          title="View listing"
+                        >
+                          <Link href={`/listing/${listing.id}`}>
+                            <Eye className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-50"
+                          title="Edit listing"
+                        >
+                          <Link href={`/host/listings/${listing.id}/edit`}>
+                            <Edit className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleCloseListing(listing.id)}
+                          className={`h-9 w-9 p-0 rounded-lg hover:bg-red-50 hover:text-red-600 ${
+                            listing.status === "CLOSED" ? "invisible" : ""
+                          }`}
+                          title="Close listing"
+                          disabled={listing.status === "CLOSED"}
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
       )}
 
       {listings.some((listing) => listing.interestCount > 0) && (
-        <Alert className="mt-6">
-          <AlertDescription>
+        <Alert className="mt-6 rounded-xl border-emerald-200 bg-emerald-50/50">
+          <AlertDescription className="text-sm">
             You have pending interests on your listings.{" "}
-            <Link href="/matching/interests" className="font-medium underline">
+            <Link href="/matching/interests" className="font-medium underline hover:text-emerald-700 transition-colors">
               Review them here
             </Link>
             .

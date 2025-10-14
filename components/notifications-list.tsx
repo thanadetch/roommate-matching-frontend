@@ -16,7 +16,6 @@ interface Notification {
   createdAt: string
 }
 
-// Mock notifications data - removed REVIEW type notifications
 const mockNotifications: Notification[] = [
   {
     id: "notif1",
@@ -52,98 +51,87 @@ const mockNotifications: Notification[] = [
     isRead: true,
     createdAt: "2024-01-14T15:45:00Z",
   },
-  {
-    id: "notif5",
-    type: "MATCH",
-    payload: {
-      counterpartyName: "Mike Rodriguez",
-      listingTitle: "Quiet Suburban Room",
-      listingId: "2",
-      matchId: "match1",
-    },
-    isRead: true,
-    createdAt: "2024-01-12T11:30:00Z",
-  },
 ]
+
+const getNotificationContent = (notification: Notification) => {
+  switch (notification.type) {
+    case "INTEREST":
+      return {
+        title: "New Interest Request",
+        description: `${notification.payload.seekerName} is interested in "${notification.payload.listingTitle}"`,
+        action: (
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/matching/interests">Review Interest</Link>
+          </Button>
+        ),
+      }
+    case "MATCH":
+      return {
+        title: "New Match!",
+        description: `You matched with ${notification.payload.counterpartyName} for "${notification.payload.listingTitle}"`,
+        action: (
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/matching/matches">View Match</Link>
+          </Button>
+        ),
+      }
+    default:
+      return {
+        title: "Notification",
+        description: "You have a new notification",
+        action: null,
+      }
+  }
+}
+
+const getNotificationIcon = (type: string) => {
+  switch (type) {
+    case "INTEREST":
+      return <Heart className="h-5 w-5 text-pink-500" />
+    case "MATCH":
+      return <Users className="h-5 w-5 text-green-500" />
+    default:
+      return <Bell className="h-5 w-5 text-blue-500" />
+  }
+}
 
 export function NotificationsList() {
   const [notifications, setNotifications] = useState(mockNotifications)
 
   const unreadCount = notifications.filter((n) => !n.isRead).length
 
-  const handleMarkAsRead = (notificationId: string) => {
-    setNotifications((prev) => prev.map((notif) => (notif.id === notificationId ? { ...notif, isRead: true } : notif)))
-    console.log("Marking notification as read:", notificationId)
-  }
-
   const handleMarkAllAsRead = () => {
-    setNotifications((prev) => prev.map((notif) => ({ ...notif, isRead: true })))
-    console.log("Marking all notifications as read")
+    setNotifications(notifications.map((n) => ({ ...n, isRead: true })))
   }
 
-  const handleDeleteNotification = (notificationId: string) => {
-    setNotifications((prev) => prev.filter((notif) => notif.id !== notificationId))
-    console.log("Deleting notification:", notificationId)
+  const handleMarkAsRead = (id: string) => {
+    setNotifications(notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
   }
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case "INTEREST":
-        return <Heart className="h-5 w-5 text-pink-500" />
-      case "MATCH":
-        return <Users className="h-5 w-5 text-green-500" />
-      default:
-        return <Bell className="h-5 w-5 text-blue-500" />
-    }
-  }
-
-  const getNotificationContent = (notification: Notification) => {
-    switch (notification.type) {
-      case "INTEREST":
-        return {
-          title: "New Interest Request",
-          description: `${notification.payload.seekerName} is interested in "${notification.payload.listingTitle}"`,
-          action: (
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/matching/interests">Review Interest</Link>
-            </Button>
-          ),
-        }
-      case "MATCH":
-        return {
-          title: "New Match!",
-          description: `You matched with ${notification.payload.counterpartyName} for "${notification.payload.listingTitle}"`,
-          action: (
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/matching/matches">View Match</Link>
-            </Button>
-          ),
-        }
-      default:
-        return {
-          title: "Notification",
-          description: "You have a new notification",
-          action: null,
-        }
-    }
+  const handleDeleteNotification = (id: string) => {
+    setNotifications(notifications.filter((n) => n.id !== id))
   }
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold font-space-grotesk mb-2">Notifications</h1>
-          <p className="text-muted-foreground">
-            Stay updated with your roommate matching activity
+          <h1 className="text-3xl font-bold text-balance mb-2">Notifications</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-muted-foreground text-sm">Stay updated with your roommate matching activity</p>
             {unreadCount > 0 && (
-              <Badge variant="destructive" className="ml-2">
+              <Badge variant="default" className="bg-emerald-500 hover:bg-emerald-600">
                 {unreadCount} unread
               </Badge>
             )}
-          </p>
+          </div>
         </div>
         {unreadCount > 0 && (
-          <Button variant="outline" onClick={handleMarkAllAsRead}>
+          <Button
+            variant="outline"
+            onClick={handleMarkAllAsRead}
+            className="rounded-xl border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 bg-transparent h-9"
+          >
             <Check className="h-4 w-4 mr-2" />
             Mark All Read
           </Button>
@@ -151,61 +139,82 @@ export function NotificationsList() {
       </div>
 
       {notifications.length === 0 ? (
-        <Card className="p-12 text-center">
-          <div className="space-y-4">
-            <Bell className="h-12 w-12 mx-auto text-muted-foreground" />
-            <h3 className="text-xl font-semibold">You're all caught up!</h3>
-            <p className="text-muted-foreground">No new notifications at the moment.</p>
-          </div>
+        <Card className="rounded-2xl border-0 shadow-sm bg-gradient-to-br from-white to-emerald-50/30">
+          <CardContent className="p-16 text-center">
+            <div className="space-y-4">
+              <div className="mx-auto w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                <Bell className="h-8 w-8 text-emerald-600" />
+              </div>
+              <h3 className="text-xl font-semibold">You're all caught up!</h3>
+              <p className="text-muted-foreground max-w-sm mx-auto">No new notifications at the moment.</p>
+            </div>
+          </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {notifications.map((notification) => {
             const content = getNotificationContent(notification)
             return (
               <Card
                 key={notification.id}
-                className={`transition-all hover:shadow-md ${!notification.isRead ? "border-primary/50 bg-primary/5" : ""}`}
+                className={`rounded-xl border transition-all hover:shadow-md ${
+                  !notification.isRead ? "border-emerald-200 bg-emerald-50/50 shadow-sm" : "border-gray-100 bg-white"
+                }`}
               >
                 <CardContent className="p-4">
-                  <div className="flex items-start space-x-4">
-                    <div className="flex-shrink-0 mt-1">{getNotificationIcon(notification.type)}</div>
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0 mt-1">
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          notification.type === "INTEREST" ? "bg-pink-100" : "bg-emerald-100"
+                        }`}
+                      >
+                        {getNotificationIcon(notification.type)}
+                      </div>
+                    </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1.5 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="font-semibold text-sm">{content.title}</h3>
                             {!notification.isRead && (
-                              <Badge variant="destructive" className="h-5 text-xs px-2">
+                              <Badge variant="default" className="h-5 text-xs px-2 bg-emerald-500 hover:bg-emerald-600">
                                 New
                               </Badge>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground">{content.description}</p>
+                          <p className="text-sm text-muted-foreground leading-relaxed">{content.description}</p>
                           <p className="text-xs text-muted-foreground">
                             {new Date(notification.createdAt).toLocaleDateString()} at{" "}
-                            {new Date(notification.createdAt).toLocaleTimeString()}
+                            {new Date(notification.createdAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
                           </p>
                         </div>
 
-                        <div className="flex items-center gap-1 ml-4">
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
                           {content.action}
-                          {!notification.isRead && (
+                          {!notification.isRead ? (
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleMarkAsRead(notification.id)}
-                              className="h-8 w-8 p-0"
+                              className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-100"
+                              title="Mark as read"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
+                          ) : (
+                            <div className="h-9 w-9" />
                           )}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDeleteNotification(notification.id)}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            className="h-9 w-9 p-0 rounded-lg text-muted-foreground hover:text-destructive hover:bg-red-50"
+                            title="Delete notification"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -220,9 +229,9 @@ export function NotificationsList() {
         </div>
       )}
 
-      <Alert className="mt-8">
-        <Bell className="h-4 w-4" />
-        <AlertDescription>
+      <Alert className="mt-8 rounded-xl border-emerald-200 bg-emerald-50/50">
+        <Bell className="h-4 w-4 text-emerald-600" />
+        <AlertDescription className="text-sm">
           Notifications help you stay updated with interest requests and new matches. You can manage your notification
           preferences in your profile settings.
         </AlertDescription>
