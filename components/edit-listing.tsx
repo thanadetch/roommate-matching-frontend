@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -15,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, MapPin, DollarSign, Calendar, Home, Info } from "lucide-react"
+import { ApiError, roomsApi } from "@/lib/api-client"
 
 interface ListingFormData {
   title: string
@@ -23,24 +23,7 @@ interface ListingFormData {
   availableFrom: string
   description: string
   status: "OPEN" | "CLOSED"
-  rules: {
-    noSmoking: boolean
-    noPet: boolean
-  }
-}
-
-// Mock data
-const mockListingData = {
-  "1": {
-    title: "Cozy Downtown Apartment",
-    location: "Downtown Seattle",
-    pricePerMonth: "1200",
-    availableFrom: "2024-02-01",
-    description:
-      "Beautiful 2BR apartment in the heart of downtown with great city views. The room comes fully furnished with a comfortable bed, desk, and closet space.",
-    status: "OPEN" as const,
-    rules: { noSmoking: true, noPet: false },
-  },
+  rules: { noSmoking: boolean; noPet: boolean }
 }
 
 interface EditListingProps {
@@ -51,6 +34,7 @@ export function EditListing({ listingId }: EditListingProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingData, setIsLoadingData] = useState(true)
+  const [serverError, setServerError] = useState<string | null>(null)
   const [errors, setErrors] = useState<Partial<ListingFormData>>({})
   const [formData, setFormData] = useState<ListingFormData>({
     title: "",
@@ -59,66 +43,72 @@ export function EditListing({ listingId }: EditListingProps) {
     availableFrom: "",
     description: "",
     status: "OPEN",
-    rules: {
-      noSmoking: false,
-      noPet: false,
-    },
+    rules: { noSmoking: false, noPet: false },
   })
 
   useEffect(() => {
-    // Mock API call to fetch listing data
-    const fetchListing = async () => {
-      setIsLoadingData(true)
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      const mockData = mockListingData[listingId as keyof typeof mockListingData]
-      if (mockData) {
-        setFormData(mockData)
+    let alive = true
+    async function fetchListing() {
+      try {
+        setServerError(null)
+        setIsLoadingData(true)
+        const data = await roomsApi.getById(listingId)
+        if (!alive) return
+        setFormData({
+          title: data.title ?? "",
+          location: data.location ?? "",
+          pricePerMonth: data.pricePerMonth != null ? String(data.pricePerMonth) : "",
+          availableFrom: data.availableFrom ? data.availableFrom.slice(0, 10) : "",
+          description: data.description ?? "",
+          status: (data.status as "OPEN" | "CLOSED") ?? "OPEN",
+          rules: {
+            noSmoking: !!data.rules?.noSmoking,
+            noPet: !!data.rules?.noPet,
+          },
+        })
+      } catch (err) {
+        setServerError(err instanceof ApiError ? err.message : "Failed to load listing")
+      } finally {
+        if (alive) setIsLoadingData(false)
       }
-      setIsLoadingData(false)
     }
-
     fetchListing()
+    return () => {
+      alive = false
+    }
   }, [listingId])
 
   const validateForm = (): boolean => {
     const newErrors: Partial<ListingFormData> = {}
-
-    if (!formData.title.trim()) {
-      newErrors.title = "Title is required"
-    }
-
-    if (!formData.location.trim()) {
-      newErrors.location = "Location is required"
-    }
-
-    if (!formData.pricePerMonth || Number.parseInt(formData.pricePerMonth) <= 0) {
+    if (!formData.title.trim()) newErrors.title = "Title is required"
+    if (!formData.location.trim()) newErrors.location = "Location is required"
+    if (!formData.pricePerMonth || Number.parseInt(formData.pricePerMonth) <= 0)
       newErrors.pricePerMonth = "Price must be greater than 0"
-    }
-
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!validateForm()) {
-      return
-    }
-
+    if (!validateForm()) return
     setIsLoading(true)
-
+    setServerError(null)
+    const iso = formData.availableFrom
+    ? `${formData.availableFrom}T00:00:00.000Z`
+    : null; // หรือ undefined ถ้าอยากเว้นไม่อัปเดต
     try {
-      // Mock API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      console.log("Updating listing:", listingId, formData)
-
-      // In real app, this would update the listing via API
+      await roomsApi.update(listingId, {
+        title: formData.title.trim(),
+        location: formData.location.trim(),
+        pricePerMonth: Number(formData.pricePerMonth),
+        availableFrom: iso,
+        description: formData.description || undefined,
+        status: formData.status,
+        rules: { noSmoking: formData.rules.noSmoking, noPet: formData.rules.noPet },
+      })
       router.push("/host/listings")
-    } catch (error) {
-      console.error("Error updating listing:", error)
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : "Failed to update listing")
     } finally {
       setIsLoading(false)
     }
@@ -126,10 +116,7 @@ export function EditListing({ listingId }: EditListingProps) {
 
   const handleInputChange = (field: keyof ListingFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
-    // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: undefined }))
-    }
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }))
   }
 
   const handleStatusChange = (value: "OPEN" | "CLOSED") => {
@@ -137,10 +124,7 @@ export function EditListing({ listingId }: EditListingProps) {
   }
 
   const handleRuleChange = (rule: keyof ListingFormData["rules"], checked: boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      rules: { ...prev.rules, [rule]: checked },
-    }))
+    setFormData((prev) => ({ ...prev, rules: { ...prev.rules, [rule]: checked } }))
   }
 
   if (isLoadingData) {
@@ -181,6 +165,12 @@ export function EditListing({ listingId }: EditListingProps) {
         <h1 className="text-3xl font-bold text-balance mb-2">Edit Listing</h1>
         <p className="text-muted-foreground text-sm">Update your listing details to attract the right roommates.</p>
       </div>
+
+      {serverError && (
+        <Alert className="mb-4 rounded-xl border-red-200 bg-red-50">
+          <AlertDescription className="text-red-700 text-sm">{serverError}</AlertDescription>
+        </Alert>
+      )}
 
       <Card className="rounded-2xl border-0 shadow-sm">
         <CardHeader className="border-b border-gray-100 p-4">
@@ -226,7 +216,7 @@ export function EditListing({ listingId }: EditListingProps) {
               {errors.location && <p className="text-sm text-red-500">{errors.location}</p>}
             </div>
 
-            {/* Price and Available From */}
+            {/* Price + AvailableFrom */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="price" className="text-sm font-medium">
@@ -273,30 +263,19 @@ export function EditListing({ listingId }: EditListingProps) {
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent className="rounded-xl">
-                  <SelectItem value="OPEN" className="rounded-lg">
-                    Open - Accepting applications
-                  </SelectItem>
-                  <SelectItem value="CLOSED" className="rounded-lg">
-                    Closed - Not accepting applications
-                  </SelectItem>
+                  <SelectItem value="OPEN" className="rounded-lg">Open - Accepting applications</SelectItem>
+                  <SelectItem value="CLOSED" className="rounded-lg">Closed - Not accepting applications</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                {formData.status === "OPEN"
-                  ? "Your listing is visible and accepting new roommate applications."
-                  : "Your listing is hidden from search results and not accepting applications."}
-              </p>
             </div>
 
-            {/* House Rules */}
+            {/* Rules */}
             <div className="space-y-3">
               <Label className="text-sm font-medium">House Rules</Label>
               <div className="space-y-2">
                 <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
                   <div className="space-y-0.5">
-                    <Label htmlFor="noSmoking" className="text-sm font-medium cursor-pointer">
-                      No Smoking
-                    </Label>
+                    <Label htmlFor="noSmoking" className="text-sm font-medium cursor-pointer">No Smoking</Label>
                     <p className="text-xs text-muted-foreground">Smoking is not allowed in the property</p>
                   </div>
                   <Switch
@@ -308,9 +287,7 @@ export function EditListing({ listingId }: EditListingProps) {
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
                   <div className="space-y-0.5">
-                    <Label htmlFor="noPet" className="text-sm font-medium cursor-pointer">
-                      No Pets
-                    </Label>
+                    <Label htmlFor="noPet" className="text-sm font-medium cursor-pointer">No Pets</Label>
                     <p className="text-xs text-muted-foreground">Pets are not allowed in the property</p>
                   </div>
                   <Switch
@@ -325,9 +302,7 @@ export function EditListing({ listingId }: EditListingProps) {
 
             {/* Description */}
             <div className="space-y-1.5">
-              <Label htmlFor="description" className="text-sm font-medium">
-                Description
-              </Label>
+              <Label htmlFor="description" className="text-sm font-medium">Description</Label>
               <Textarea
                 id="description"
                 placeholder="Describe your room, the living situation, amenities, and what you're looking for in a roommate..."
@@ -336,26 +311,14 @@ export function EditListing({ listingId }: EditListingProps) {
                 rows={4}
                 className="rounded-xl border-gray-200 focus-visible:ring-emerald-500 resize-none text-sm"
               />
-              <p className="text-xs text-muted-foreground">
-                Include details about the room, shared spaces, neighborhood, and your ideal roommate.
-              </p>
             </div>
 
-            {/* Submit Buttons */}
+            {/* Submit */}
             <div className="flex gap-3 pt-2">
-              <Button
-                type="submit"
-                disabled={isLoading}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-600 rounded-xl shadow-sm h-9"
-              >
+              <Button type="submit" disabled={isLoading} className="flex-1 bg-emerald-500 hover:bg-emerald-600 rounded-xl shadow-sm h-9">
                 {isLoading ? "Saving..." : "Save Changes"}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                asChild
-                className="rounded-xl border-gray-200 hover:bg-gray-50 bg-transparent h-9"
-              >
+              <Button type="button" variant="outline" asChild className="rounded-xl border-gray-200 hover:bg-gray-50 bg-transparent h-9">
                 <Link href="/host/listings">Cancel</Link>
               </Button>
             </div>

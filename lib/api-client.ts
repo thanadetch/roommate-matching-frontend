@@ -87,6 +87,7 @@ export const listingsApi = {
     }),
 }
 
+const base = "/roommate-matching-gateway"
 // Interests API functions
 export const interestsApi = {
   getAll: (filters?: { hostId?: string; status?: string }) =>
@@ -120,6 +121,25 @@ export const matchesApi = {
       method: "GET",
       params: { userId: userId || "current_user" },
     }),
+}
+
+export const matchingApi = {
+  getInterests: () => apiRequest<{ pending: any[]; accepted: any[]; rejected: any[] }>(`/roommate-matching-gateway/interests`, { method: "GET" }),
+
+  acceptInterest: (id: string) =>
+    apiRequest<any>(`/roommate-matching-gateway/interests/${id}/accept`, { method: "POST" }),
+
+  rejectInterest: (id: string, reason?: string) =>
+    apiRequest<any>(`/roommate-matching-gateway/interests/${id}/reject`, { method: "POST", data: { reason } }),
+
+  getAllMatches: () =>
+    apiRequest<{ asHost: any[]; asSeeker: any[] }>(`/roommate-matching-gateway/matches`, { method: "GET" }),
+
+  getMatchesByUser: (userId: string) =>
+    apiRequest<{ asHost: any[]; asSeeker: any[] }>(`/roommate-matching-gateway/matches/${userId}`, { method: "GET" }),
+
+  deleteMatch: (id: string) =>
+    apiRequest<any>(`/roommate-matching-gateway/matches/${id}`, { method: "DELETE" }),
 }
 
 export const jwt = {
@@ -238,5 +258,79 @@ export const authApi = {
     }>("/auth/register", {
       method: "POST",
       data,
+    }),
+}
+
+
+export const roomsApi = {
+  // สร้างห้อง (listing)
+  create: (data: {
+    title: string
+    location: string
+    pricePerMonth: number
+    availableFrom?: string | null
+    description?: string
+    rules?: { noSmoking?: boolean; noPet?: boolean }
+    hostId?: string // จะอัดจาก JWT ฝั่ง frontend ถ้า backend ยังไม่อ่านจาก token
+  }) =>
+    apiRequest<any>("/rooms", {
+      method: "POST",
+      data,
+    }),
+
+  // ดึงทั้งหมด (ถ้าต้องการ filter ฝั่ง backend ค่อยเพิ่ม query ภายหลัง)
+  getAll: () =>
+    apiRequest<any[]>("/rooms", {
+      method: "GET",
+    }),
+
+  // browse สำหรับหน้า explore (รองรับ query ภายหลัง)
+  browse: async (filters?: { location?: string; priceMin?: number; priceMax?: number; status?: string }) => {
+    const raw = await apiRequest<any>("/rooms/browse", { method: "GET", params: filters })
+
+    // รองรับหลาย shape ที่ backend อาจส่งมา
+    const list =
+      Array.isArray(raw) ? raw :
+      raw?.results ??
+      raw?.data ??
+      raw?.rooms ??
+      raw?.listings ??
+      [];
+
+    // map snake_case -> camelCase เผื่อ backend ส่งแบบนี้มา
+    const normalized = list.map((r: any) => ({
+      id: r.id,
+      title: r.title,
+      location: r.location,
+      pricePerMonth: r.pricePerMonth ?? r.price_per_month ?? r.price ?? 0,
+      status: r.status ?? "OPEN",
+      description: r.description ?? "",
+      availableFrom: r.availableFrom ?? r.available_from ?? r.availableDate ?? null,
+      rules: {
+        noSmoking: r.rules?.noSmoking ?? r.rules?.no_smoking ?? r.noSmoking ?? false,
+        noPet:     r.rules?.noPet     ?? r.rules?.no_pet     ?? r.noPet     ?? false,
+      },
+      hostId: r.hostId ?? r.host_id ?? r.ownerId ?? undefined,
+      createdAt: r.createdAt ?? r.created_at ?? undefined,
+    }))
+
+    return normalized
+  },
+
+
+  // GET /rooms/:id
+  getById: (id: string) => apiRequest<any>(`/rooms/${id}`, { method: "GET" }),
+
+  // อัปเดต
+  update: (id: string, data: any) =>
+    apiRequest<any>(`/rooms/${id}`, {
+      method: "PUT",
+      data,
+    }),
+
+  // ลบ
+  remove: (id: string) =>
+    apiRequest<any>(`/rooms/${id}`, {
+      method: "DELETE",
     }),
 }
