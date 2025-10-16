@@ -99,7 +99,7 @@ export const roomsApi = {
     availableFrom?: string | null
     description?: string
     noSmoking?: boolean
-    petFriendly?: boolean
+    noPets?: boolean
     quiet?: boolean
     nightOwl?: boolean
     hostId?: string
@@ -128,7 +128,7 @@ export const roomsApi = {
       description: r.description ?? "",
       availableFrom: r.availableFrom ?? r.available_from ?? r.availableDate ?? null,
       noSmoking: r.noSmoking ?? false,
-      petFriendly: r.petFriendly ?? false,
+      noPets: r.noPets ?? false,
       quiet: r.quiet ?? false,
       nightOwl: r.nightOwl ?? false,
       hostId: r.hostId ?? r.host_id ?? r.ownerId ?? undefined,

@@ -95,7 +95,7 @@ export function InterestsManagement() {
   const getLifestyleIcons = (lifestyle: any) => {
     const icons = []
     if (!lifestyle?.smoking) icons.push({ icon: <Cigarette className="h-3 w-3" />, label: "No Smoking" })
-    if (lifestyle?.pet) icons.push({ icon: <Dog className="h-3 w-3" />, label: "Pet Friendly" })
+    if (lifestyle?.pet) icons.push({ icon: <Dog className="h-3 w-3" />, label: "No Pets" })
     if (lifestyle?.quiet) icons.push({ icon: <Volume2 className="h-3 w-3" />, label: "Quiet" })
     if (lifestyle?.nightOwl) icons.push({ icon: <Moon className="h-3 w-3" />, label: "Night Owl" })
     return icons

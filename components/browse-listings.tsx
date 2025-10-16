@@ -56,7 +56,7 @@ export function BrowseListings() {
     if (appliedFilters.priceMax) p.priceMax = Number(appliedFilters.priceMax)
     // ถ้าจะส่ง lifestyle ไป backend ค่อย map:
     // if (appliedFilters.lifestylePreferences.includes("noSmoking")) p.noSmoking = true
-    // if (appliedFilters.lifestylePreferences.includes("petFriendly")) p.petFriendly = true
+    // if (appliedFilters.lifestylePreferences.includes("noPets")) p.noPets = true
     return p
   }, [appliedFilters])
 
@@ -137,15 +137,15 @@ export function BrowseListings() {
             <span className="text-sm font-medium">No Smoking</span>
           </button>
           <button
-            onClick={() => toggleLifestylePreference("petFriendly")}
+            onClick={() => toggleLifestylePreference("noPets")}
             className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 transition-all ${
-              draftFilters.lifestylePreferences.includes("petFriendly")
+              draftFilters.lifestylePreferences.includes("noPets")
                 ? "border-emerald-500 bg-emerald-50 text-emerald-700"
                 : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300"
             }`}
           >
             <Dog className="w-4 h-4" />
-            <span className="text-sm font-medium">Pet Friendly</span>
+            <span className="text-sm font-medium">No Pets</span>
           </button>
           <button
             onClick={() => toggleLifestylePreference("quiet")}

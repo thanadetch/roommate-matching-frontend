@@ -22,7 +22,7 @@ interface ListingFormData {
   availableFrom: string
   description: string
   noSmoking: boolean
-  petFriendly: boolean
+  noPets: boolean
   quiet: boolean
   nightOwl: boolean
 }
@@ -39,7 +39,7 @@ export function CreateListing() {
     availableFrom: "",
     description: "",
     noSmoking: false,
-    petFriendly: false,
+    noPets: false,
     quiet: false,
     nightOwl: false,
   })
@@ -91,7 +91,7 @@ export function CreateListing() {
         availableFrom: iso,
         description: formData.description || undefined,
         noSmoking: formData.noSmoking,
-        petFriendly: formData.petFriendly,
+        noPets: formData.noPets,
         quiet: formData.quiet,
         nightOwl: formData.nightOwl,
         hostId: hostId as string, 
@@ -240,15 +240,15 @@ export function CreateListing() {
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
                   <div className="space-y-0.5">
-                    <Label htmlFor="petFriendly" className="text-sm font-medium cursor-pointer">
-                      Pet Friendly
+                    <Label htmlFor="noPets" className="text-sm font-medium cursor-pointer">
+                      No Pets
                     </Label>
                     <p className="text-xs text-muted-foreground">Pets are not allowed in the property</p>
                   </div>
                   <Switch
-                    id="petFriendly"
-                    checked={formData.petFriendly}
-                    onCheckedChange={(checked) => handleRuleChange("petFriendly", checked)}
+                    id="noPets"
+                    checked={formData.noPets}
+                    onCheckedChange={(checked) => handleRuleChange("noPets", checked)}
                     className="data-[state=checked]:bg-emerald-500"
                   />
                 </div>

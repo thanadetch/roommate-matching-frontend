@@ -24,7 +24,7 @@ interface ListingFormData {
   description: string
   status: "OPEN" | "CLOSED"
   noSmoking: boolean
-  petFriendly: boolean
+  noPets: boolean
   quiet: boolean
   nightOwl: boolean
 }
@@ -47,7 +47,7 @@ export function EditListing({ listingId }: EditListingProps) {
     description: "",
     status: "OPEN",
     noSmoking: false,
-    petFriendly: false,
+    noPets: false,
     quiet: false,
     nightOwl: false,
   })
@@ -68,7 +68,7 @@ export function EditListing({ listingId }: EditListingProps) {
           description: data.description ?? "",
           status: (data.status as "OPEN" | "CLOSED") ?? "OPEN",
           noSmoking: !!data.noSmoking,
-          petFriendly: !!data.petFriendly,
+          noPets: !!data.noPets,
           quiet: !!data.quiet,
           nightOwl: !!data.nightOwl,
         })
@@ -124,7 +124,7 @@ export function EditListing({ listingId }: EditListingProps) {
         description: formData.description || undefined,
         status: formData.status,
         noSmoking: formData.noSmoking,
-        petFriendly: formData.petFriendly,
+        noPets: formData.noPets,
         quiet: formData.quiet,
         nightOwl: formData.nightOwl,
       })
@@ -315,13 +315,13 @@ export function EditListing({ listingId }: EditListingProps) {
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
                   <div className="space-y-0.5">
-                    <Label htmlFor="petFriendly" className="text-sm font-medium cursor-pointer">Pet Friendly</Label>
+                    <Label htmlFor="noPets" className="text-sm font-medium cursor-pointer">No Pets</Label>
                     <p className="text-xs text-muted-foreground">Pets are not allowed in the property</p>
                   </div>
                   <Switch
-                    id="petFriendly"
-                    checked={formData.petFriendly}
-                    onCheckedChange={(checked) => handleRuleChange("petFriendly", checked)}
+                    id="noPets"
+                    checked={formData.noPets}
+                    onCheckedChange={(checked) => handleRuleChange("noPets", checked)}
                     className="data-[state=checked]:bg-emerald-500"
                   />
                 </div>
