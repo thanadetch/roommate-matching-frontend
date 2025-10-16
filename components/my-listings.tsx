@@ -7,17 +7,18 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Plus, Eye, Edit, XCircle, Calendar, DollarSign, MapPin, Home, Users } from "lucide-react"
-import { ApiError, jwt, roomsApi, tokenStorage } from "@/lib/api-client"
+import { ApiError, jwt, roomsApi, roommateMatchingApi, tokenStorage } from "@/lib/api-client"
 
 export function MyListings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [allRooms, setAllRooms] = useState<any[]>([])
+  const [interestCounts, setInterestCounts] = useState<Record<string, number>>({})
 
   const userId = useMemo(() => {
     const t = tokenStorage.get()
     const payload = t ? jwt.decode(t) : null
-    return payload?.sub || null
+    return payload?.sub || payload?.id || null
   }, [])
 
   useEffect(() => {
@@ -28,7 +29,21 @@ export function MyListings() {
         setLoading(true)
         const rooms = await roomsApi.getAll()
         if (!alive) return
-        setAllRooms(Array.isArray(rooms) ? rooms : [])
+        const roomsList = Array.isArray(rooms) ? rooms : []
+        setAllRooms(roomsList)
+
+        if (userId) {
+          const counts: Record<string, number> = {}
+          for (const room of roomsList.filter((r) => r.hostId === userId)) {
+            try {
+              const countData = await roommateMatchingApi.getInterestCounts(userId)
+              counts[room.id] = countData.pending || 0
+            } catch (e) {
+              counts[room.id] = 0
+            }
+          }
+          if (alive) setInterestCounts(counts)
+        }
       } catch (e) {
         setError(e instanceof ApiError ? e.message : "Failed to load listings")
       } finally {
@@ -39,12 +54,9 @@ export function MyListings() {
     return () => {
       alive = false
     }
-  }, [])
+  }, [userId])
 
-  const listings = useMemo(
-    () => allRooms.filter((r) => (userId ? r.hostId === userId : true)),
-    [allRooms, userId],
-  )
+  const listings = useMemo(() => allRooms.filter((r) => (userId ? r.hostId === userId : true)), [allRooms, userId])
 
   const handleCloseListing = async (listingId: string) => {
     try {
@@ -131,8 +143,10 @@ export function MyListings() {
                         </div>
                         <div className="flex items-center text-muted-foreground">
                           <Users className="h-4 w-4 mr-1.5" />
-                          <span className="font-medium text-emerald-600">{listing.interestCount ?? 0}</span>
-                          <span className="ml-1">{(listing.interestCount ?? 0) === 1 ? "person" : "people"} interested</span>
+                          <span className="font-medium text-emerald-600">{interestCounts[listing.id] ?? 0}</span>
+                          <span className="ml-1">
+                            {(interestCounts[listing.id] ?? 0) === 1 ? "person" : "people"} interested
+                          </span>
                         </div>
                         <div className="flex items-center text-muted-foreground">
                           <Calendar className="h-4 w-4 mr-1.5" />
@@ -144,18 +158,32 @@ export function MyListings() {
                     <div className="flex items-center gap-2 shrink-0">
                       <Badge
                         variant={listing.status === "OPEN" ? "default" : "secondary"}
-                        className={listing.status === "OPEN" ? "bg-emerald-500 hover:bg-emerald-600 rounded-lg" : "rounded-lg"}
+                        className={
+                          listing.status === "OPEN" ? "bg-emerald-500 hover:bg-emerald-600 rounded-lg" : "rounded-lg"
+                        }
                       >
                         {listing.status}
                       </Badge>
 
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" asChild className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-50" title="View listing">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-50"
+                          title="View listing"
+                        >
                           <Link href={`/listing/${listing.id}`}>
                             <Eye className="h-4 w-4" />
                           </Link>
                         </Button>
-                        <Button variant="ghost" size="sm" asChild className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-50" title="Edit listing">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-50"
+                          title="Edit listing"
+                        >
                           <Link href={`/host/listings/${listing.id}/edit`}>
                             <Edit className="h-4 w-4" />
                           </Link>

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { interestsApi, roomsApi } from "@/lib/api-client"
+import { roommateMatchingApi, roomsApi, tokenStorage, jwt } from "@/lib/api-client"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -201,18 +201,29 @@ export function BrowseListings() {
     </div>
   )
 
-  const handleExpressInterest = async (listingId: string) => {
+  const handleExpressInterest = async (listing: any) => {
     try {
       setIsSubmitting(true)
-      await interestsApi.create({ listingId, message: interestMessage || undefined })
+      const token = tokenStorage.get()
+      const payload = token ? jwt.decode(token) : null
+      const seekerId = payload?.sub || payload?.id
+
+      if (!seekerId) {
+        console.error("User not authenticated")
+        return
+      }
+
+      await roommateMatchingApi.createInterest({
+        hostId: listing.hostId,
+        seekerId,
+        message: interestMessage || undefined,
+        roomId: listing.id,
+      })
       setInterestMessage("")
       setOpenDialogFor(null)
-      // ถ้าอยากให้หน้า Interests อัปเดต:
-      // queryClient.invalidateQueries({ queryKey: ["interests.list"] })
-      // แจ้งผู้ใช้ด้วย toast ก็ได้
+      queryClient.invalidateQueries({ queryKey: ["interests.list"] })
     } catch (e) {
       console.error("Failed to send interest:", e)
-      // แสดง toast error ตามต้องการ
     } finally {
       setIsSubmitting(false)
     }
@@ -347,7 +358,10 @@ export function BrowseListings() {
                 </Button>
 
                 {listing.status === "OPEN" && (
-                  <Dialog open={openDialogFor === listing.id} onOpenChange={(open) => setOpenDialogFor(open ? listing.id : null)}>
+                  <Dialog
+                    open={openDialogFor === listing.id}
+                    onOpenChange={(open) => setOpenDialogFor(open ? listing.id : null)}
+                  >
                     <DialogTrigger asChild>
                       <Button
                         size="sm"
@@ -376,7 +390,7 @@ export function BrowseListings() {
                         <div className="flex gap-2">
                           <Button
                             disabled={isSubmitting}
-                            onClick={() => handleExpressInterest(listing.id)}
+                            onClick={() => handleExpressInterest(listing)}
                             className="flex-1 bg-emerald-600 hover:bg-emerald-700 rounded-xl"
                           >
                             {isSubmitting ? "Sending..." : "Send Interest"}

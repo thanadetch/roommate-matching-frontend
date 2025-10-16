@@ -69,11 +69,12 @@ export function RegisterForm() {
     e.preventDefault()
     setServerError(null)
 
-    if (!validateForm()) return
+    if (!validateForm()) {
+      return
+    }
 
     setIsLoading(true)
     try {
-      // 1) Register จริง
       await authApi.register({
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
@@ -81,14 +82,12 @@ export function RegisterForm() {
         password: formData.password,
       })
 
-      // 2) Auto-login แล้วเก็บ token
       const { access_token } = await authApi.login({
         email: formData.email.trim(),
         password: formData.password,
       })
       tokenStorage.set(access_token)
 
-      // 3) ไปหน้าหลักหรือ next param
       const params = new URLSearchParams(window.location.search)
       const next = params.get("next") || "/"
       router.replace(next)
@@ -101,7 +100,10 @@ export function RegisterForm() {
   }
 
   const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: "" }))
     }

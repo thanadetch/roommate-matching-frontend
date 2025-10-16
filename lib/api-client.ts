@@ -7,7 +7,7 @@ const apiClient = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 10000, // 10 seconds timeout
+  timeout: 10000, 
 })
 
 export const tokenStorage = {
@@ -16,9 +16,24 @@ export const tokenStorage = {
   clear: () => localStorage.removeItem("auth_token"),
 }
 
+export const jwtUtil = {
+  decode: (token: string) => {
+    try {
+      const [, payload] = token.split(".")
+      return JSON.parse(typeof window !== "undefined" ? atob(payload) : Buffer.from(payload, "base64").toString())
+    } catch {
+      return null
+    }
+  },
+}
+
+export const jwt = jwtUtil
+
+export const getToken = tokenStorage.get
+export const decodeToken = jwtUtil.decode
+
 apiClient.interceptors.request.use(
   (config) => {
-    // Add auth token if available (client-side only)
     if (typeof window !== "undefined") {
       const token = tokenStorage.get()
       if (token) {
@@ -38,14 +53,11 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     if (error.response) {
-      // Server responded with error status
       const message = error.response.data?.message || `API Error: ${error.response.status} ${error.response.statusText}`
       throw new ApiError(message, error.response.status)
     } else if (error.request) {
-      // Request was made but no response received
       throw new ApiError("Network error: No response from server", 0)
     } else {
-      // Something else happened
       throw new ApiError(error.message || "Unknown error occurred", 0)
     }
   },
@@ -58,188 +70,6 @@ async function apiRequest<T>(endpoint: string, options: AxiosRequestConfig = {})
   })
   return response.data
 }
-
-// Listings API functions
-export const listingsApi = {
-  getAll: (filters?: { location?: string; priceMin?: number; priceMax?: number; status?: string }) =>
-    apiRequest<{ listings: any[]; total: number }>(`/listings`, {
-      method: "GET",
-      params: filters,
-    }),
-
-  getById: (id: string) => apiRequest<any>(`/listings/${id}`, { method: "GET" }),
-
-  create: (data: any) =>
-    apiRequest<any>("/listings", {
-      method: "POST",
-      data,
-    }),
-
-  update: (id: string, data: any) =>
-    apiRequest<any>(`/listings/${id}`, {
-      method: "PATCH",
-      data,
-    }),
-
-  close: (id: string) =>
-    apiRequest<any>(`/listings/${id}/close`, {
-      method: "POST",
-    }),
-}
-
-const base = "/roommate-matching-gateway"
-// Interests API functions
-export const interestsApi = {
-  getAll: (filters?: { hostId?: string; status?: string }) =>
-    apiRequest<{ interests: any[]; total: number }>(`/interests`, {
-      method: "GET",
-      params: filters,
-    }),
-
-  create: (data: { listingId: string; message?: string }) =>
-    apiRequest<any>("/interests", {
-      method: "POST",
-      data,
-    }),
-
-  accept: (id: string) =>
-    apiRequest<{ interest: any; match: any }>(`/interests/${id}/accept`, {
-      method: "POST",
-    }),
-
-  reject: (id: string, reason?: string) =>
-    apiRequest<any>(`/interests/${id}/reject`, {
-      method: "POST",
-      data: { reason },
-    }),
-}
-
-// Matches API functions
-export const matchesApi = {
-  getAll: (userId?: string) =>
-    apiRequest<{ asHost: any[]; asSeeker: any[]; total: number }>(`/matches`, {
-      method: "GET",
-      params: { userId: userId || "current_user" },
-    }),
-}
-
-export const matchingApi = {
-  getInterests: () => apiRequest<{ pending: any[]; accepted: any[]; rejected: any[] }>(`/roommate-matching-gateway/interests`, { method: "GET" }),
-
-  acceptInterest: (id: string) =>
-    apiRequest<any>(`/roommate-matching-gateway/interests/${id}/accept`, { method: "POST" }),
-
-  rejectInterest: (id: string, reason?: string) =>
-    apiRequest<any>(`/roommate-matching-gateway/interests/${id}/reject`, { method: "POST", data: { reason } }),
-
-  getAllMatches: () =>
-    apiRequest<{ asHost: any[]; asSeeker: any[] }>(`/roommate-matching-gateway/matches`, { method: "GET" }),
-
-  getMatchesByUser: (userId: string) =>
-    apiRequest<{ asHost: any[]; asSeeker: any[] }>(`/roommate-matching-gateway/matches/${userId}`, { method: "GET" }),
-
-  deleteMatch: (id: string) =>
-    apiRequest<any>(`/roommate-matching-gateway/matches/${id}`, { method: "DELETE" }),
-}
-
-export const jwt = {
-  decode: (token: string) => {
-    try {
-      const [, payload] = token.split(".")
-      return JSON.parse(typeof window !== "undefined" ? atob(payload) : Buffer.from(payload, "base64").toString())
-    } catch {
-      return null
-    }
-  },
-}
-
-// Profile API functions
-export const profileApi = {
-  // GET /profiles/email/:email
-  getByEmail: (email: string) =>
-    apiRequest<{ result?: any }>(`/profiles/email/${encodeURIComponent(email)}`, { method: "GET" }),
-
-  // GET /profiles/:id
-  getById: (id: string) => apiRequest<{ result?: any }>(`/profiles/${id}`, { method: "GET" }),
-
-  // PUT /profiles/:id
-  updateById: (id: string, data: any) =>
-    apiRequest<any>(`/profiles/${id}`, {
-      method: "PUT",
-      data,
-    }),
-
-  // (ถ้าจำเป็นต้องสร้างใหม่) POST /profiles
-  create: (data: any) =>
-    apiRequest<any>(`/profiles`, {
-      method: "POST",
-      data,
-    }),
-}
-
-// Notifications API functions
-export const notificationsApi = {
-  getAll: (userId?: string) =>
-    apiRequest<{ notifications: any[]; unreadCount: number }>(`/notifications`, {
-      method: "GET",
-      params: { userId: userId || "current_user" },
-    }),
-
-  markAsRead: (id: string) =>
-    apiRequest<any>(`/notifications/${id}/read`, {
-      method: "PATCH",
-    }),
-}
-
-// Reviews API functions
-export const reviewsApi = {
-  // GET /reviews?reviewerId=...
-  getGivenBy: (reviewerId: string) =>
-    apiRequest<{ results: any[] }>(`/reviews`, {
-      method: "GET",
-      params: { reviewerId },
-    }),
-
-  // GET /reviews?revieweeId=...
-  getForUser: (revieweeId: string) =>
-    apiRequest<{ results: any[] }>(`/reviews`, {
-      method: "GET",
-      params: { revieweeId },
-    }),
-
-  // POST /reviews  (reviewerId จะอ่านจาก JWT ใน gateway)
-  create: (data: { revieweeId: string; rating: number; comment?: string }) =>
-    apiRequest<any>(`/reviews`, {
-      method: "POST",
-      data,
-    }),
-
-  // PUT /reviews/:id
-  update: (id: string, data: { rating?: number; comment?: string; revieweeId?: string }) =>
-    apiRequest<any>(`/reviews/${id}`, {
-      method: "PUT",
-      data,
-    }),
-
-  // DELETE /reviews/:id
-  delete: (id: string) =>
-    apiRequest<any>(`/reviews/${id}`, {
-      method: "DELETE",
-    }),
-}
-
-// Error handling utility
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-  ) {
-    super(message)
-    this.name = "ApiError"
-  }
-}
-
-
 
 export const authApi = {
   login: (data: { email: string; password: string }) =>
@@ -261,43 +91,34 @@ export const authApi = {
     }),
 }
 
-
 export const roomsApi = {
-  // สร้างห้อง (listing)
   create: (data: {
     title: string
     location: string
     pricePerMonth: number
     availableFrom?: string | null
     description?: string
-    rules?: { noSmoking?: boolean; noPet?: boolean }
-    hostId?: string // จะอัดจาก JWT ฝั่ง frontend ถ้า backend ยังไม่อ่านจาก token
+    noSmoking?: boolean
+    petFriendly?: boolean
+    quiet?: boolean
+    nightOwl?: boolean
+    hostId?: string
   }) =>
     apiRequest<any>("/rooms", {
       method: "POST",
       data,
     }),
 
-  // ดึงทั้งหมด (ถ้าต้องการ filter ฝั่ง backend ค่อยเพิ่ม query ภายหลัง)
   getAll: () =>
     apiRequest<any[]>("/rooms", {
       method: "GET",
     }),
 
-  // browse สำหรับหน้า explore (รองรับ query ภายหลัง)
   browse: async (filters?: { location?: string; priceMin?: number; priceMax?: number; status?: string }) => {
     const raw = await apiRequest<any>("/rooms/browse", { method: "GET", params: filters })
 
-    // รองรับหลาย shape ที่ backend อาจส่งมา
-    const list =
-      Array.isArray(raw) ? raw :
-      raw?.results ??
-      raw?.data ??
-      raw?.rooms ??
-      raw?.listings ??
-      [];
+    const list = Array.isArray(raw) ? raw : (raw?.results ?? raw?.data ?? raw?.rooms ?? [])
 
-    // map snake_case -> camelCase เผื่อ backend ส่งแบบนี้มา
     const normalized = list.map((r: any) => ({
       id: r.id,
       title: r.title,
@@ -306,10 +127,10 @@ export const roomsApi = {
       status: r.status ?? "OPEN",
       description: r.description ?? "",
       availableFrom: r.availableFrom ?? r.available_from ?? r.availableDate ?? null,
-      rules: {
-        noSmoking: r.rules?.noSmoking ?? r.rules?.no_smoking ?? r.noSmoking ?? false,
-        noPet:     r.rules?.noPet     ?? r.rules?.no_pet     ?? r.noPet     ?? false,
-      },
+      noSmoking: r.noSmoking ?? false,
+      petFriendly: r.petFriendly ?? false,
+      quiet: r.quiet ?? false,
+      nightOwl: r.nightOwl ?? false,
       hostId: r.hostId ?? r.host_id ?? r.ownerId ?? undefined,
       createdAt: r.createdAt ?? r.created_at ?? undefined,
     }))
@@ -317,20 +138,260 @@ export const roomsApi = {
     return normalized
   },
 
-
-  // GET /rooms/:id
   getById: (id: string) => apiRequest<any>(`/rooms/${id}`, { method: "GET" }),
 
-  // อัปเดต
   update: (id: string, data: any) =>
     apiRequest<any>(`/rooms/${id}`, {
       method: "PUT",
       data,
     }),
 
-  // ลบ
   remove: (id: string) =>
     apiRequest<any>(`/rooms/${id}`, {
       method: "DELETE",
     }),
+}
+
+export const roommateMatchingApi = {
+  createInterest: (data: { hostId: string; seekerId: string; message?: string , roomId: string}) =>
+    apiRequest<any>("/roommate-matching/interests", {
+      method: "POST",
+      data,
+    }),
+
+  getInterestById: (id: string) => apiRequest<any>(`/roommate-matching/interests/${id}`, { method: "GET" }),
+
+  updateInterestStatus: (id: string, data: { status: string; reason?: string }) =>
+    apiRequest<any>(`/roommate-matching/interests/${id}/status`, {
+      method: "PUT",
+      data,
+    }),
+
+  acceptInterest: (id: string) => apiRequest<any>(`/roommate-matching/interests/${id}/accept`, { method: "PUT" }),
+
+  rejectInterest: (id: string) => apiRequest<any>(`/roommate-matching/interests/${id}/reject`, { method: "PUT" }),
+
+  getInterestsForHost: (hostId: string, filters?: { status?: string }) =>
+    apiRequest<any[]>(`/roommate-matching/interests/host/${hostId}`, {
+      method: "GET",
+      params: filters,
+    }),
+
+  getInterestsForSeeker: (seekerId: string, filters?: { status?: string }) =>
+    apiRequest<any[]>(`/roommate-matching/interests/seeker/${seekerId}`, {
+      method: "GET",
+      params: filters,
+    }),
+
+  getInterestCounts: (hostId: string) =>
+    apiRequest<{ pending: number; accepted: number; rejected: number }>(
+      `/roommate-matching/interests/host/${hostId}/counts`,
+      {
+        method: "GET",
+      },
+    ),
+
+  getMatchesAsHost: (hostId: string) =>
+    apiRequest<any[]>(`/roommate-matching/matches/host/${hostId}`, { method: "GET" }),
+
+  getMatchesAsSeeker: (seekerId: string) =>
+    apiRequest<any[]>(`/roommate-matching/matches/seeker/${seekerId}`, { method: "GET" }),
+
+  getAllMatches: (userId: string) =>
+    apiRequest<{ asHost: any[]; asSeeker: any[] }>(`/roommate-matching/matches/user/${userId}`, {
+      method: "GET",
+    }),
+}
+
+export const profileApi = {
+  getByEmail: (email: string) =>
+    apiRequest<{ result?: any }>(`/profiles/email/${encodeURIComponent(email)}`, { method: "GET" }),
+
+  getById: (id: string) => apiRequest<{ result?: any }>(`/profiles/${id}`, { method: "GET" }),
+
+  updateById: (id: string, data: any) =>
+    apiRequest<any>(`/profiles/${id}`, {
+      method: "PUT",
+      data,
+    }),
+
+  create: (data: any) =>
+    apiRequest<any>(`/profiles`, {
+      method: "POST",
+      data,
+    }),
+
+  delete: (id: string) =>
+    apiRequest<any>(`/profiles/${id}`, {
+      method: "DELETE",
+    }),
+}
+
+export const reviewsApi = {
+  create: (data: { revieweeId: string; rating: number; comment?: string }) =>
+    apiRequest<any>(`/reviews`, {
+      method: "POST",
+      data,
+    }),
+
+    getAll: (filters?: { reviewerId?: string; revieweeId?: string }) =>
+      apiRequest<{ results: any[] }>(`/reviews`, {
+        method: "GET",
+        params: filters,
+      }),
+
+  getByUser: (userId: string) =>
+    apiRequest<{ results: any[] }>(`/reviews/by-user/${userId}`, {
+      method: "GET",
+    }),
+
+  getForUser: (userId: string) =>
+    apiRequest<{ results: any[] }>(`/reviews/for-user/${userId}`, {
+      method: "GET",
+    }),
+
+  getById: (id: string) =>
+    apiRequest<any>(`/reviews/${id}`, {
+      method: "GET",
+    }),
+
+  update: (id: string, data: { rating?: number; comment?: string }) =>
+    apiRequest<any>(`/reviews/${id}`, {
+      method: "PUT",
+      data,
+    }),
+
+  delete: (id: string) =>
+    apiRequest<any>(`/reviews/${id}`, {
+      method: "DELETE",
+    }),
+}
+
+export const notificationsApi = {
+  create: (data: { userId: string; type: string; message: string; metadata?: any }) =>
+    apiRequest<any>(`/notifications`, {
+      method: "POST",
+      data,
+    }),
+
+  getAll: () =>
+    apiRequest<any[]>(`/notifications`, {
+      method: "GET",
+    }),
+
+  getByUserId: (userId: string) =>
+    apiRequest<any[]>(`/notifications/user/${userId}`, {
+      method: "GET",
+    }),
+
+  getUnread: (userId: string) =>
+    apiRequest<any[]>(`/notifications/user/${userId}/unread`, {
+      method: "GET",
+    }),
+
+  getCount: (userId: string) =>
+    apiRequest<{ count: number }>(`/notifications/user/${userId}/count`, {
+      method: "GET",
+    }),
+
+  getById: (id: string) =>
+    apiRequest<any>(`/notifications/${id}`, {
+      method: "GET",
+    }),
+
+  update: (id: string, data: any) =>
+    apiRequest<any>(`/notifications/${id}`, {
+      method: "PUT",
+      data,
+    }),
+
+  markAsRead: (id: string) =>
+    apiRequest<any>(`/notifications/${id}/read`, {
+      method: "PUT",
+    }),
+
+  markAllAsRead: (userId: string) =>
+    apiRequest<any>(`/notifications/user/${userId}/read-all`, {
+      method: "PUT",
+    }),
+
+  delete: (id: string) =>
+    apiRequest<any>(`/notifications/${id}`, {
+      method: "DELETE",
+    }),
+
+  deleteAllByUser: (userId: string) =>
+    apiRequest<any>(`/notifications/user/${userId}/all`, {
+      method: "DELETE",
+    }),
+}
+
+export const listingsApi = {
+  getAll: (filters?: { location?: string; priceMin?: number; priceMax?: number; status?: string }) =>
+    roomsApi.browse(filters).then((listings) => ({ listings, total: listings.length })),
+
+  getById: (id: string) => roomsApi.getById(id),
+
+  create: (data: any) => roomsApi.create(data),
+
+  update: (id: string, data: any) => roomsApi.update(id, data),
+
+  close: (id: string) => roomsApi.update(id, { status: "CLOSED" }),
+}
+
+export const interestsApi = {
+  getAll: (filters?: { hostId?: string; status?: string }) => {
+    if (filters?.hostId) {
+      return roommateMatchingApi
+        .getInterestsForHost(filters.hostId, { status: filters.status })
+        .then((interests) => ({ interests, total: interests.length }))
+    }
+    return Promise.resolve({ interests: [], total: 0 })
+  },
+
+  create: (data: { hostId: string; seekerId: string; message?: string; roomId: string }) => {
+    const token = tokenStorage.get()
+    const payload = token ? jwtUtil.decode(token) : null
+    const seekerId = payload?.sub || payload?.id
+
+    if (!seekerId) {
+      return Promise.reject(new ApiError("User not authenticated", 401))
+    }
+
+    return roommateMatchingApi.createInterest({ ...data, seekerId, hostId: data.hostId })
+  },
+
+  accept: (id: string) =>
+    roommateMatchingApi.acceptInterest(id).then((result) => ({ interest: result, match: result })),
+
+  reject: (id: string, reason?: string) => roommateMatchingApi.rejectInterest(id),
+}
+
+export const matchesApi = {
+  getAll: (userId?: string) => {
+    let uid = userId
+    if (!uid || uid === "current_user") {
+      const token = tokenStorage.get()
+      const payload = token ? jwtUtil.decode(token) : null
+      uid = payload?.sub || payload?.id
+    }
+
+    if (!uid) {
+      return Promise.reject(new ApiError("User not authenticated", 401))
+    }
+
+    return roommateMatchingApi
+      .getAllMatches(uid)
+      .then((matches) => ({ ...matches, total: (matches.asHost?.length || 0) + (matches.asSeeker?.length || 0) }))
+  },
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message)
+    this.name = "ApiError"
+  }
 }

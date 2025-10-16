@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Heart, User, MapPin, DollarSign, Calendar, Mail, MessageCircle, Eye, Info, Star, Edit } from "lucide-react"
-import { matchingApi } from "@/lib/api-client"
+import { roommateMatchingApi, tokenStorage, jwt } from "@/lib/api-client"
 
 const getInitialFormState = (matchId: string) => ({ rating: 0, comment: "" })
 
@@ -29,7 +29,17 @@ export function MatchesView() {
     setLoading(true)
     setError(null)
     try {
-      const res = await matchingApi.getAllMatches()
+      const token = tokenStorage.get()
+      const payload = token ? jwt.decode(token) : null
+      const userId = payload?.sub || payload?.id
+
+      if (!userId) {
+        setError("User not authenticated")
+        setLoading(false)
+        return
+      }
+
+      const res = await roommateMatchingApi.getAllMatches(userId)
       setMatches(res)
     } catch (e: any) {
       setError(e?.message || "Failed to load matches")
@@ -51,20 +61,32 @@ export function MatchesView() {
   }, [])
 
   const updateRating = useCallback((matchId: string, rating: number) => {
-    setFormStates((prev) => ({ ...prev, [matchId]: { ...prev[matchId], rating } }))
+    setFormStates((prev) => ({
+      ...prev,
+      [matchId]: { ...prev[matchId], rating },
+    }))
   }, [])
 
   const updateComment = useCallback((matchId: string, comment: string) => {
-    setFormStates((prev) => ({ ...prev, [matchId]: { ...prev[matchId], comment } }))
+    setFormStates((prev) => ({
+      ...prev,
+      [matchId]: { ...prev[matchId], comment },
+    }))
   }, [])
 
   const handleReviewSubmit = useCallback(
     (matchId: string) => {
-      const currentForm = formStates[matchId]
-      if (currentForm) {
-        setReviews((prev) => ({ ...prev, [matchId]: { ...currentForm, createdAt: new Date().toISOString() } }))
-        closeDialog(matchId)
+      const formData = formStates[matchId]
+      if (formData) {
+        setReviews((prev) => ({
+          ...prev,
+          [matchId]: {
+            ...formData,
+            createdAt: new Date().toISOString(),
+          },
+        }))
       }
+        closeDialog(matchId)
     },
     [formStates, closeDialog],
   )
@@ -76,10 +98,12 @@ export function MatchesView() {
       : { name: match.hostName, contact: match.hostContact }
 
     const existingReview = reviews[match.id as keyof typeof reviews]
+
     const currentForm = useMemo(
       () => formStates[match.id] || getInitialFormState(match.id),
-      [formStates, match.id],
+      [formStates, match.id, getInitialFormState],
     )
+
     const isDialogOpen = dialogStates[match.id] || false
 
     return (
@@ -87,9 +111,7 @@ export function MatchesView() {
         <CardHeader className="border-b border-gray-100 pb-3">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1 flex-1">
-              <CardTitle className="text-base text-balance">
-                {match.listingTitle}
-              </CardTitle>
+              <CardTitle className="text-base text-balance">{match.listingTitle}</CardTitle>
               <div className="flex items-center text-xs text-muted-foreground">
                 <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
                 {match.listingLocation}
@@ -123,7 +145,10 @@ export function MatchesView() {
                 <Avatar className="h-9 w-9 ring-2 ring-emerald-100">
                   <AvatarImage src="/diverse-user-avatars.png" alt={counterparty.name} />
                   <AvatarFallback className="bg-emerald-100 text-emerald-600 text-xs">
-                    {counterparty.name?.split(" ")?.map((n: string) => n[0]).join("")}
+                    {counterparty.name
+                      ?.split(" ")
+                      ?.map((n: string) => n[0])
+                      .join("")}
                   </AvatarFallback>
                 </Avatar>
                 <div>

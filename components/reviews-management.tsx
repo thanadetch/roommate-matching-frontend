@@ -21,7 +21,6 @@ interface Review {
   comment?: string
   isAnonymous?: boolean
   createdAt: string
-  // ถ้า gateway enrich โปรไฟล์ฝั่ง reviewee
   revieweeProfile?: {
     firstName?: string
     lastName?: string
@@ -71,7 +70,7 @@ export function ReviewsManagement() {
           return
         }
 
-        const res = await reviewsApi.getGivenBy(sub)
+        const res = await reviewsApi.getAll({ reviewerId: sub })
         if (alive) setReviews(res.results || [])
       } catch (e) {
         if (alive) setError(e instanceof ApiError ? e.message : "Failed to load reviews")

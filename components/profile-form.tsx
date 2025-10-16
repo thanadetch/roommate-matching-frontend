@@ -26,9 +26,9 @@ interface ProfileDataUI {
   preferredArea: string
   lifestyle: {
     smoking: boolean
-    pet: boolean        // -> petOwner
+    pet: boolean        
     nightOwl: boolean
-    quiet: boolean      // -> quietPerson
+    quiet: boolean      
   }
   contactLine: string
   contactEmail: string
@@ -46,7 +46,7 @@ export function ProfileForm() {
     id: undefined,
     firstName: "",
     lastName: "",
-    email: "",          // SSR: เว้นว่างไว้ก่อน กัน mismatch
+    email: "",          
     gender: "",
     budgetMin: "",
     budgetMax: "",
@@ -56,12 +56,10 @@ export function ProfileForm() {
     contactEmail: "",
   })
 
-  // mark as mounted เพื่อกัน hydration mismatch (client-only data)
   useEffect(() => {
     setMounted(true)
   }, [])
 
-  // โหลด token + email + โปรไฟล์จริงหลัง mount เท่านั้น
   useEffect(() => {
     let alive = true
     async function fetchProfile() {
@@ -71,7 +69,6 @@ export function ProfileForm() {
         const payload = token ? jwt.decode(token) : null
         const email = payload?.email ?? ""
 
-        // set email ให้ UI ก่อน (client-side เท่านั้น)
         if (alive) {
           setProfileData((prev) => ({
             ...prev,
@@ -109,7 +106,6 @@ export function ProfileForm() {
           setLastUpdated(p.updatedAt ?? p.createdAt ?? null)
         }
       } catch (err) {
-        // 404 = ยังไม่มีโปรไฟล์ก็ปล่อยให้กรอก
         if (!(err instanceof ApiError && err.status === 404)) {
           setServerError(err instanceof ApiError ? err.message : "Failed to load profile")
         }
@@ -148,7 +144,6 @@ export function ProfileForm() {
       if (profileData.id) {
         await profileApi.updateById(profileData.id, payload)
       } else {
-        // ถ้า backend ยัง require password ใน CreateProfileDto ให้แก้ backend ให้ optional
         await profileApi.create({
           ...payload,
           password: "TEMPORARY_PASSWORD_CHANGE_ME",
@@ -166,11 +161,17 @@ export function ProfileForm() {
   }
 
   const handleInputChange = (field: keyof ProfileDataUI, value: string) => {
-    setProfileData((prev) => ({ ...prev, [field]: value }))
+    setProfileData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
   }
 
-  const handleLifestyleChange = (l: keyof ProfileDataUI["lifestyle"], checked: boolean) => {
-    setProfileData((prev) => ({ ...prev, lifestyle: { ...prev.lifestyle, [l]: checked } }))
+  const handleLifestyleChange = (lifestyle: keyof ProfileDataUI["lifestyle"], checked: boolean) => {
+    setProfileData((prev) => ({
+      ...prev,
+      lifestyle: { ...prev.lifestyle, [lifestyle]: checked },
+    }))
   }
 
   const initials =
@@ -200,13 +201,11 @@ export function ProfileForm() {
         </Alert>
       )}
 
-      {/* Header */}
       <Card>
         <CardHeader>
           <div className="flex items-center space-x-4">
             <Avatar className="h-16 w-16">
               <AvatarImage src="/diverse-user-avatars.png" alt={profileData.firstName || "User"} />
-              {/* กัน mismatch ด้วยการแสดงหลัง mount */}
               <AvatarFallback className="text-lg">{mounted ? initials : "U"}</AvatarFallback>
             </Avatar>
             <div>
@@ -226,7 +225,6 @@ export function ProfileForm() {
         </CardHeader>
       </Card>
 
-      {/* Form */}
       <Card className={isFetching ? "opacity-60 pointer-events-none mt-6" : "mt-6"}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -236,7 +234,6 @@ export function ProfileForm() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Basic Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First Name</Label>
@@ -271,7 +268,6 @@ export function ProfileForm() {
               </div>
             </div>
 
-            {/* Gender */}
             <div className="space-y-3">
               <Label>Gender</Label>
               <RadioGroup
@@ -290,7 +286,6 @@ export function ProfileForm() {
               </RadioGroup>
             </div>
 
-            {/* Budget */}
             <div className="space-y-3">
               <Label>Budget Range</Label>
               <div className="grid grid-cols-2 gap-4">
@@ -325,7 +320,6 @@ export function ProfileForm() {
               </div>
             </div>
 
-            {/* Preferred Area */}
             <div className="space-y-2">
               <Label htmlFor="preferredArea">Preferred Area</Label>
               <div className="relative">
@@ -340,7 +334,6 @@ export function ProfileForm() {
               </div>
             </div>
 
-            {/* Lifestyle */}
             <div className="space-y-4">
               <Label>Lifestyle Preferences</Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -406,7 +399,6 @@ export function ProfileForm() {
               </div>
             </div>
 
-            {/* Contact */}
             <div className="space-y-4">
               <Label>Contact Information</Label>
               <p className="text-sm text-muted-foreground">
@@ -435,7 +427,6 @@ export function ProfileForm() {
               </div>
             </div>
 
-            {/* Submit */}
             <div className="pt-4">
               <Button type="submit" disabled={isSaving || isFetching} className="w-full md:w-auto">
                 {isSaving ? "Saving..." : "Save Profile"}

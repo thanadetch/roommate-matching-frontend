@@ -21,7 +21,10 @@ interface ListingFormData {
   pricePerMonth: string
   availableFrom: string
   description: string
-  rules: { noSmoking: boolean; noPet: boolean }
+  noSmoking: boolean
+  petFriendly: boolean
+  quiet: boolean
+  nightOwl: boolean
 }
 
 export function CreateListing() {
@@ -35,30 +38,48 @@ export function CreateListing() {
     pricePerMonth: "",
     availableFrom: "",
     description: "",
-    rules: { noSmoking: false, noPet: false },
+    noSmoking: false,
+    petFriendly: false,
+    quiet: false,
+    nightOwl: false,
   })
 
   const validateForm = (): boolean => {
     const newErrors: Partial<ListingFormData> = {}
-    if (!formData.title.trim()) newErrors.title = "Title is required"
-    if (!formData.location.trim()) newErrors.location = "Location is required"
-    if (!formData.pricePerMonth || Number.parseInt(formData.pricePerMonth) <= 0)
+
+    if (!formData.title.trim()) {
+      newErrors.title = "Title is required"
+    }
+
+    if (!formData.location.trim()) {
+      newErrors.location = "Location is required"
+    }
+
+    if (!formData.pricePerMonth || Number.parseInt(formData.pricePerMonth) <= 0) {
       newErrors.pricePerMonth = "Price must be greater than 0"
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validateForm()) return
+
+    if (!validateForm()) {
+      return
+    }
+
     setIsLoading(true)
     setServerError(null)
 
     try {
-      // ดึง hostId จาก JWT (sub)
       const token = tokenStorage.get()
       const payload = token ? jwt.decode(token) : null
-      const hostId = payload?.sub
+      const hostId = payload?.sub as string
+      if (!hostId) {
+        throw new ApiError("User not authenticated", 401)
+      }
       const iso = formData.availableFrom
       ? `${formData.availableFrom}T00:00:00.000Z`
       : undefined;
@@ -69,11 +90,13 @@ export function CreateListing() {
         pricePerMonth: Number(formData.pricePerMonth),
         availableFrom: iso,
         description: formData.description || undefined,
-        rules: { noSmoking: formData.rules.noSmoking, noPet: formData.rules.noPet },
-        hostId, // ถ้า backend ใช้ guard อ่านจาก token อยู่แล้ว ฟิลด์นี้ไม่จำเป็น
+        noSmoking: formData.noSmoking,
+        petFriendly: formData.petFriendly,
+        quiet: formData.quiet,
+        nightOwl: formData.nightOwl,
+        hostId: hostId as string, 
       })
 
-      // ไปหน้า my listings
       router.push("/host/listings")
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : "Failed to create listing")
@@ -84,11 +107,17 @@ export function CreateListing() {
 
   const handleInputChange = (field: keyof ListingFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
-    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }))
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: undefined }))
+    }
   }
 
-  const handleRuleChange = (rule: keyof ListingFormData["rules"], checked: boolean) => {
-    setFormData((prev) => ({ ...prev, rules: { ...prev.rules, [rule]: checked } }))
+  const handleRuleChange = (rule: keyof ListingFormData, checked: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      [rule]: checked,
+    }))
   }
 
   return (
@@ -204,22 +233,50 @@ export function CreateListing() {
                   </div>
                   <Switch
                     id="noSmoking"
-                    checked={formData.rules.noSmoking}
+                    checked={formData.noSmoking}
                     onCheckedChange={(checked) => handleRuleChange("noSmoking", checked)}
                     className="data-[state=checked]:bg-emerald-500"
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
                   <div className="space-y-0.5">
-                    <Label htmlFor="noPet" className="text-sm font-medium cursor-pointer">
-                      No Pets
+                    <Label htmlFor="petFriendly" className="text-sm font-medium cursor-pointer">
+                      Pet Friendly
                     </Label>
                     <p className="text-xs text-muted-foreground">Pets are not allowed in the property</p>
                   </div>
                   <Switch
-                    id="noPet"
-                    checked={formData.rules.noPet}
-                    onCheckedChange={(checked) => handleRuleChange("noPet", checked)}
+                    id="petFriendly"
+                    checked={formData.petFriendly}
+                    onCheckedChange={(checked) => handleRuleChange("petFriendly", checked)}
+                    className="data-[state=checked]:bg-emerald-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="quiet" className="text-sm font-medium cursor-pointer">
+                      Quiet
+                    </Label>
+                    <p className="text-xs text-muted-foreground">The property is quiet and peaceful</p>
+                  </div>
+                  <Switch
+                    id="quiet"
+                    checked={formData.quiet}
+                    onCheckedChange={(checked) => handleRuleChange("quiet", checked)}
+                    className="data-[state=checked]:bg-emerald-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="nightOwl" className="text-sm font-medium cursor-pointer">
+                      Night Owl
+                    </Label>
+                    <p className="text-xs text-muted-foreground">The property is a night owl and stays up late</p>
+                  </div>
+                  <Switch
+                    id="nightOwl"
+                    checked={formData.nightOwl}
+                    onCheckedChange={(checked) => handleRuleChange("nightOwl", checked)}
                     className="data-[state=checked]:bg-emerald-500"
                   />
                 </div>

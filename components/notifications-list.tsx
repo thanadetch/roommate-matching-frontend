@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Bell, Heart, Users, Check, Eye, Trash2 } from "lucide-react"
+import { Bell, Heart, Users, Check, Eye, Trash2, Loader2 } from "lucide-react"
+import { notificationsApi, decodeToken, getToken } from "@/lib/api-client"
 
 interface Notification {
   id: string
@@ -15,43 +16,6 @@ interface Notification {
   isRead: boolean
   createdAt: string
 }
-
-const mockNotifications: Notification[] = [
-  {
-    id: "notif1",
-    type: "INTEREST",
-    payload: {
-      seekerName: "Alex Johnson",
-      listingTitle: "Cozy Downtown Apartment",
-      listingId: "1",
-    },
-    isRead: false,
-    createdAt: "2024-01-16T10:30:00Z",
-  },
-  {
-    id: "notif2",
-    type: "MATCH",
-    payload: {
-      counterpartyName: "Emma Wilson",
-      listingTitle: "Modern Loft Space",
-      listingId: "3",
-      matchId: "match2",
-    },
-    isRead: false,
-    createdAt: "2024-01-15T14:20:00Z",
-  },
-  {
-    id: "notif3",
-    type: "INTEREST",
-    payload: {
-      seekerName: "Sarah Chen",
-      listingTitle: "Cozy Downtown Apartment",
-      listingId: "1",
-    },
-    isRead: true,
-    createdAt: "2024-01-14T15:45:00Z",
-  },
-]
 
 const getNotificationContent = (notification: Notification) => {
   switch (notification.type) {
@@ -96,20 +60,98 @@ const getNotificationIcon = (type: string) => {
 }
 
 export function NotificationsList() {
-  const [notifications, setNotifications] = useState(mockNotifications)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const token = getToken()
+        if (!token) {
+          setError("Please log in to view notifications")
+          return
+        }
+
+        const decoded = decodeToken(token)
+        if (!decoded?.userId) {
+          setError("Invalid authentication token")
+          return
+        }
+
+        const data = await notificationsApi.getByUserId(decoded.userId)
+        setNotifications(data)
+      } catch (err: any) {
+        console.error("[v0] Error fetching notifications:", err)
+        setError(err.message || "Failed to load notifications")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchNotifications()
+  }, [])
 
   const unreadCount = notifications.filter((n) => !n.isRead).length
 
-  const handleMarkAllAsRead = () => {
-    setNotifications(notifications.map((n) => ({ ...n, isRead: true })))
+  const handleMarkAllAsRead = async () => {
+    try {
+      const token = getToken()
+      if (!token) return
+
+      const decoded = decodeToken(token)
+      if (!decoded?.userId) return
+
+      const unreadNotifications = notifications.filter((n) => !n.isRead)
+      await Promise.all(unreadNotifications.map((n) => notificationsApi.markAsRead(n.id)))
+
+      setNotifications(notifications.map((n) => ({ ...n, isRead: true })))
+    } catch (err: any) {
+      console.error("[v0] Error marking all as read:", err)
+      setError(err.message || "Failed to mark notifications as read")
+    }
   }
 
-  const handleMarkAsRead = (id: string) => {
-    setNotifications(notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      await notificationsApi.markAsRead(id)
+      setNotifications(notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+    } catch (err: any) {
+      console.error("[v0] Error marking notification as read:", err)
+      setError(err.message || "Failed to mark notification as read")
+    }
   }
 
-  const handleDeleteNotification = (id: string) => {
-    setNotifications(notifications.filter((n) => n.id !== id))
+  const handleDeleteNotification = async (id: string) => {
+    try {
+      await notificationsApi.delete(id)
+      setNotifications(notifications.filter((n) => n.id !== id))
+    } catch (err: any) {
+      console.error("[v0] Error deleting notification:", err)
+      setError(err.message || "Failed to delete notification")
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <Alert className="rounded-xl border-red-200 bg-red-50">
+          <AlertDescription className="text-sm text-red-800">{error}</AlertDescription>
+        </Alert>
+      </div>
+    )
   }
 
   return (

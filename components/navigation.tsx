@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation" // Added useRouter import for logout redirect
+import { usePathname, useRouter } from "next/navigation" 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -24,7 +24,7 @@ const navigationItems = [
 
 export function Navigation() {
   const pathname = usePathname()
-  const router = useRouter() // Added router for logout functionality
+  const router = useRouter() 
 
   const handleSignOut = () => {
     tokenStorage.clear()

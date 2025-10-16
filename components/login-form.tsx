@@ -45,7 +45,6 @@ export function LoginForm() {
 
     setIsLoading(true)
 
-    // Simulate API call
     try {
       const { access_token } = await authApi.login({
         email: formData.email,
@@ -58,7 +57,7 @@ export function LoginForm() {
       router.replace(next)
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Login failed"
-      setErrors((prev) => ({ ...prev, password: msg })) // โชว์ error ใต้ฟิลด์
+      setErrors((prev) => ({ ...prev, password: msg })) 
     } finally {
       setIsLoading(false)
     }

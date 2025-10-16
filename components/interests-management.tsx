@@ -1,4 +1,3 @@
-// components/interests-management
 "use client"
 
 import { useEffect, useState } from "react"
@@ -23,7 +22,7 @@ import {
   MapPin,
   Calendar,
 } from "lucide-react"
-import { matchingApi } from "@/lib/api-client"
+import { roommateMatchingApi, tokenStorage, jwt } from "@/lib/api-client"
 
 export function InterestsManagement() {
   const [interests, setInterests] = useState<{ pending: any[]; accepted: any[]; rejected: any[] }>({
@@ -41,8 +40,27 @@ export function InterestsManagement() {
     setLoading(true)
     setError(null)
     try {
-      const res = await matchingApi.getInterests()
-      setInterests(res)
+      const token = tokenStorage.get()
+      const payload = token ? jwt.decode(token) : null
+      const hostId = payload?.sub || payload?.id
+
+      if (!hostId) {
+        setError("User not authenticated")
+        setLoading(false)
+        return
+      }
+
+      const [pending, accepted, rejected] = await Promise.all([
+        roommateMatchingApi.getInterestsForHost(hostId, { status: "PENDING" }),
+        roommateMatchingApi.getInterestsForHost(hostId, { status: "ACCEPTED" }),
+        roommateMatchingApi.getInterestsForHost(hostId, { status: "REJECTED" }),
+      ])
+
+      setInterests({
+        pending: pending || [],
+        accepted: accepted || [],
+        rejected: rejected || [],
+      })
     } catch (e: any) {
       setError(e?.message || "Failed to load interests")
     } finally {
@@ -56,7 +74,7 @@ export function InterestsManagement() {
 
   const handleAcceptInterest = async (interestId: string) => {
     try {
-      await matchingApi.acceptInterest(interestId)
+      await roommateMatchingApi.acceptInterest(interestId)
       await load()
     } catch (e) {
       console.error(e)
@@ -65,7 +83,7 @@ export function InterestsManagement() {
 
   const handleRejectInterest = async (interestId: string, reason?: string) => {
     try {
-      await matchingApi.rejectInterest(interestId, reason)
+      await roommateMatchingApi.rejectInterest(interestId)
       setRejectionReason("")
       setSelectedInterest(null)
       await load()
@@ -92,7 +110,10 @@ export function InterestsManagement() {
               <Avatar className="h-10 w-10">
                 <AvatarImage src="/diverse-user-avatars.png" alt={interest.seekerName} />
                 <AvatarFallback>
-                  {interest.seekerName?.split(" ")?.map((n: string) => n[0]).join("")}
+                  {interest.seekerName
+                    ?.split(" ")
+                    ?.map((n: string) => n[0])
+                    .join("")}
                 </AvatarFallback>
               </Avatar>
               <div>
@@ -240,17 +261,17 @@ export function InterestsManagement() {
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="pending" className="flex items-center gap-2">
             <Heart className="h-4 w-4" />
-            Pending ({(interests?.pending?.length ?? 0)})
+            Pending ({interests?.pending?.length ?? 0})
           </TabsTrigger>
 
           <TabsTrigger value="accepted" className="flex items-center gap-2">
             <Check className="h-4 w-4" />
-            Accepted ({(interests?.accepted?.length ?? 0)})
+            Accepted ({interests?.accepted?.length ?? 0})
           </TabsTrigger>
 
           <TabsTrigger value="rejected" className="flex items-center gap-2">
             <X className="h-4 w-4" />
-            Rejected ({(interests?.rejected?.length ?? 0)})
+            Rejected ({interests?.rejected?.length ?? 0})
           </TabsTrigger>
         </TabsList>
 
