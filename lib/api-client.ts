@@ -19,8 +19,20 @@ export const tokenStorage = {
 export const jwtUtil = {
   decode: (token: string) => {
     try {
-      const [, payload] = token.split(".")
-      return JSON.parse(typeof window !== "undefined" ? atob(payload) : Buffer.from(payload, "base64").toString())
+      const parts = token.split(".")
+      if (parts.length < 2) return null
+      const payload = parts[1]
+
+      // handle base64url (replace -/_ และเติม padding)
+      const b64 = payload.replace(/-/g, "+").replace(/_/g, "/")
+      const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4))
+
+      const json =
+        typeof window !== "undefined"
+          ? atob(b64 + pad)
+          : Buffer.from(b64 + pad, "base64").toString()
+
+      return JSON.parse(json)
     } catch {
       return null
     }
@@ -268,7 +280,7 @@ export const reviewsApi = {
 }
 
 export const notificationsApi = {
-  create: (data: { userId: string; type: string; message: string; metadata?: any }) =>
+  create: (data: { userId: string; type: string; title: string; message: string; metadata?: any }) =>
     apiRequest<any>(`/notifications`, {
       method: "POST",
       data,

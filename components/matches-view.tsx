@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Heart, User, MapPin, DollarSign, Calendar, Mail, MessageCircle, Eye, Info, Star, Edit } from "lucide-react"
-import { roommateMatchingApi, tokenStorage, jwt } from "@/lib/api-client"
+import { roommateMatchingApi, tokenStorage, jwt, reviewsApi } from "@/lib/api-client"
 
 const getInitialFormState = (matchId: string) => ({ rating: 0, comment: "" })
 
@@ -75,18 +75,39 @@ export function MatchesView() {
   }, [])
 
   const handleReviewSubmit = useCallback(
-    (matchId: string) => {
-      const formData = formStates[matchId]
-      if (formData) {
+    async (matchId: string, match: any, isHost: boolean) => {
+      try {
+        const formData = formStates[matchId]
+        if (!formData || formData.rating === 0) return
+  
+        // ✅ หาฝั่งตรงข้ามจาก match
+        const revieweeId = isHost ? match.seekerId : match.hostId
+        if (!revieweeId) {
+          console.error("Missing counterparty id on match")
+          return
+        }
+  
+        // ✅ ยิงไป backend จริง
+        const created = await reviewsApi.create({
+          revieweeId,
+          rating: formData.rating,
+          comment: formData.comment?.trim() || undefined,
+        })
+  
+        // เก็บลง local state เพื่อโชว์ผลทันที (optional)
         setReviews((prev) => ({
           ...prev,
           [matchId]: {
-            ...formData,
-            createdAt: new Date().toISOString(),
+            rating: created.rating ?? formData.rating,
+            comment: created.comment ?? formData.comment,
+            createdAt: created.createdAt ?? new Date().toISOString(),
           },
         }))
-      }
+  
         closeDialog(matchId)
+      } catch (e) {
+        console.error("Failed to create review:", e)
+      }
     },
     [formStates, closeDialog],
   )
@@ -312,7 +333,7 @@ export function MatchesView() {
                         Cancel
                       </Button>
                       <Button
-                        onClick={() => handleReviewSubmit(match.id)}
+                        onClick={() => handleReviewSubmit(match.id, match, isHost)}
                         className="bg-emerald-500 hover:bg-emerald-600 rounded-xl"
                       >
                         {existingReview ? "Update Review" : "Save Review"}
