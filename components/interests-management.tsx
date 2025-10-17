@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { interestsApi } from "@/lib/api-client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Heart,
@@ -32,7 +33,6 @@ export function InterestsManagement() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
   const [rejectionReason, setRejectionReason] = useState("")
   const [selectedInterest, setSelectedInterest] = useState<string | null>(null)
 
@@ -82,22 +82,22 @@ export function InterestsManagement() {
   }
 
   const handleRejectInterest = async (interestId: string, reason?: string) => {
-    try {
-      await roommateMatchingApi.rejectInterest(interestId)
-      setRejectionReason("")
-      setSelectedInterest(null)
-      await load()
-    } catch (e) {
-      console.error(e)
-    }
+  try {
+    await interestsApi.reject(interestId, reason)
+    setRejectionReason("")
+    setSelectedInterest(null)
+    await load()
+  } catch (e) {
+    console.error(e)
   }
+}
 
   const getLifestyleIcons = (lifestyle: any) => {
     const icons = []
-    if (!lifestyle?.smoking) icons.push({ icon: <Cigarette className="h-3 w-3" />, label: "No Smoking" })
-    if (lifestyle?.pet) icons.push({ icon: <Dog className="h-3 w-3" />, label: "No Pets" })
-    if (lifestyle?.quiet) icons.push({ icon: <Volume2 className="h-3 w-3" />, label: "Quiet" })
-    if (lifestyle?.nightOwl) icons.push({ icon: <Moon className="h-3 w-3" />, label: "Night Owl" })
+    if (lifestyle && lifestyle.smoking === false) icons.push({ icon: <Cigarette className="h-3 w-3" />, label: "No Smoking" })
+    if (lifestyle && lifestyle.pet === false) icons.push({ icon: <Dog className="h-3 w-3" />, label: "No Pets" })
+    if (lifestyle && lifestyle.quiet) icons.push({ icon: <Volume2 className="h-3 w-3" />, label: "Quiet" })
+    if (lifestyle && lifestyle.nightOwl) icons.push({ icon: <Moon className="h-3 w-3" />, label: "Night Owl" })
     return icons
   }
 
@@ -108,7 +108,7 @@ export function InterestsManagement() {
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-3">
               <Avatar className="h-10 w-10">
-                <AvatarImage src="/diverse-user-avatars.png" alt={interest.seekerName} />
+                <AvatarImage src={interest.seekerAvatar ?? "/diverse-user-avatars.png"} alt={interest.seekerName} />
                 <AvatarFallback>
                   {interest.seekerName
                     ?.split(" ")
@@ -120,23 +120,25 @@ export function InterestsManagement() {
                 <h3 className="font-semibold text-base">{interest.seekerName}</h3>
                 <div className="flex items-center text-sm text-muted-foreground">
                   <MapPin className="h-3 w-3 mr-1" />
-                  {interest.listingTitle}
+                  {interest.listingLocation ?? interest.listing?.location ?? "Unknown location"}
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-4 text-sm">
+            <div className="flex items-center gap-4 text-sm flex-wrap">
               {interest.seekerProfile && (
                 <>
                   <div className="flex items-center text-emerald-600 font-semibold">
-                    <DollarSign className="h-4 w-4" />
+                    <DollarSign className="h-4 w-4 mr-1" />
                     {interest.seekerProfile.budgetMin}-{interest.seekerProfile.budgetMax}/mo
                   </div>
+
                   {interest.seekerProfile.gender && (
                     <Badge variant="outline" className="text-xs">
                       {interest.seekerProfile.gender}
                     </Badge>
                   )}
+
                   <div className="flex items-center gap-1">
                     {getLifestyleIcons(interest.seekerProfile.lifestyle || {}).map((item, idx) => (
                       <Badge key={idx} variant="outline" className="p-1">
@@ -189,6 +191,7 @@ export function InterestsManagement() {
                   <Check className="h-4 w-4 mr-1" />
                   Accept
                 </Button>
+
                 <Dialog>
                   <DialogTrigger asChild>
                     <Button
