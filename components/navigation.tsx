@@ -26,7 +26,8 @@ const navigationItems = [
 export function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
-  const { unreadCount } = useNotificationCount()
+  const { data: countData } = useNotificationCount()
+  const unreadCount = (countData as { unread: number } | undefined)?.unread || 0
 
   const handleSignOut = () => {
     tokenStorage.clear()

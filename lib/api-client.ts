@@ -302,7 +302,7 @@ export const notificationsApi = {
     }),
 
   getCount: (userId: string) =>
-    apiRequest<{ count: number }>(`/notifications/user/${userId}/count`, {
+    apiRequest<{ total: number; unread: number }>(`/notifications/user/${userId}/count`, {
       method: "GET",
     }),
 

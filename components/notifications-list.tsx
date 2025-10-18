@@ -1,13 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Bell, Heart, Users, Check, Eye, Trash2, Loader2, MessageSquare, Star, Clock } from "lucide-react"
-import { notificationsApi, decodeToken, getToken } from "@/lib/api-client"
+import { decodeToken, getToken } from "@/lib/api-client"
+import { 
+  useNotifications, 
+  useMarkNotificationRead, 
+  useMarkAllNotificationsRead, 
+  useDeleteNotification 
+} from "@/lib/hooks/use-notifications"
 
 type NotificationType =
   | "INTEREST_REQUEST"
@@ -66,93 +71,46 @@ const getQuickAction = (n: Notification) => {
 }
 
 export function NotificationsList() {
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // Get user ID from token
+  const token = getToken()
+  const decoded = token ? decodeToken(token) as any : null
+  const userId = decoded?.userId || decoded?.sub || decoded?.id
 
-  useEffect(() => {
-    const fetchNotifications = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        const token = getToken()
-        if (!token) {
-          setError("Please log in to view notifications")
-          return
-        }
+  // Use hooks for data fetching and mutations
+  const { data: notificationsData, isLoading: loading, error } = useNotifications(userId)
+  const markAsReadMutation = useMarkNotificationRead()
+  const markAllAsReadMutation = useMarkAllNotificationsRead()
+  const deleteMutation = useDeleteNotification()
 
-        const decoded = decodeToken(token) as any
-        const userId = decoded?.userId || decoded?.sub || decoded?.id
-        if (!userId) {
-          setError("Invalid authentication token")
-          return
-        }
-
-        const data = await notificationsApi.getByUserId(userId)
-        // เผื่อ backend รุ่นเก่าบางตัวส่งฟิลด์ไม่ครบ — normalize เบา ๆ
-        const normalized: Notification[] = (data || []).map((r: any) => ({
-          id: r.id,
-          userId: r.userId,
-          type: r.type,
-          status: r.status ?? (r.isRead ? "READ" : "UNREAD"),
-          title: r.title ?? "Notification",
-          message:
-            r.message ??
-            r.payload?.description ??
-            "You have a new notification.",
-          createdAt: r.createdAt,
-          updatedAt: r.updatedAt ?? r.createdAt,
-        }))
-        setNotifications(normalized)
-      } catch (err: any) {
-        console.error("Error fetching notifications:", err)
-        setError(err.message || "Failed to load notifications")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchNotifications()
-  }, [])
+  // Normalize notifications data
+  const notifications: Notification[] = (notificationsData || []).map((r: any) => ({
+    id: r.id,
+    userId: r.userId,
+    type: r.type,
+    status: r.status ?? (r.isRead ? "READ" : "UNREAD"),
+    title: r.title ?? "Notification",
+    message:
+      r.message ??
+      r.payload?.description ??
+      "You have a new notification.",
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt ?? r.createdAt,
+  }))
 
   const unreadCount = notifications.filter((n) => n.status !== "READ").length
 
-  const handleMarkAllAsRead = async () => {
-    try {
-      const token = getToken()
-      if (!token) return
-      const decoded = decodeToken(token) as any
-      const userId = decoded?.userId || decoded?.sub || decoded?.id
-      if (!userId) return
-
-      // ถ้ามี endpoint markAllAsRead ใช้อันนี้จะไวกว่า
-      await notificationsApi.markAllAsRead(userId)
-
-      setNotifications((prev) => prev.map((n) => ({ ...n, status: "READ" })))
-    } catch (err: any) {
-      console.error("Error marking all as read:", err)
-      setError(err.message || "Failed to mark notifications as read")
+  const handleMarkAllAsRead = () => {
+    if (userId) {
+      markAllAsReadMutation.mutate(userId)
     }
   }
 
-  const handleMarkAsRead = async (id: string) => {
-    try {
-      await notificationsApi.markAsRead(id)
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, status: "READ" } : n)))
-    } catch (err: any) {
-      console.error("Error marking notification as read:", err)
-      setError(err.message || "Failed to mark notification as read")
-    }
+  const handleMarkAsRead = (id: string) => {
+    markAsReadMutation.mutate(id)
   }
 
-  const handleDeleteNotification = async (id: string) => {
-    try {
-      await notificationsApi.delete(id)
-      setNotifications((prev) => prev.filter((n) => n.id !== id))
-    } catch (err: any) {
-      console.error("Error deleting notification:", err)
-      setError(err.message || "Failed to delete notification")
-    }
+  const handleDeleteNotification = (id: string) => {
+    deleteMutation.mutate(id)
   }
 
   if (loading) {
@@ -169,7 +127,9 @@ export function NotificationsList() {
     return (
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <Alert className="rounded-xl border-red-200 bg-red-50">
-          <AlertDescription className="text-sm text-red-800">{error}</AlertDescription>
+          <AlertDescription className="text-sm text-red-800">
+            {error instanceof Error ? error.message : "Failed to load notifications"}
+          </AlertDescription>
         </Alert>
       </div>
     )
@@ -193,9 +153,14 @@ export function NotificationsList() {
           <Button
             variant="outline"
             onClick={handleMarkAllAsRead}
+            disabled={markAllAsReadMutation.isPending}
             className="rounded-xl border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 bg-transparent h-9"
           >
-            <Check className="h-4 w-4 mr-2" />
+            {markAllAsReadMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4 mr-2" />
+            )}
             Mark All Read
           </Button>
         )}

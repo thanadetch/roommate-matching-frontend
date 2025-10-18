@@ -1,23 +1,57 @@
 "use client"
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { notificationsApi, decodeToken, getToken} from "@/lib/api-client"
-import { useState, useEffect } from "react"
+import { notificationsApi, decodeToken, getToken } from "@/lib/api-client"
 
 // Query keys for notifications
 export const notificationKeys = {
   all: ["notifications"] as const,
   lists: () => [...notificationKeys.all, "list"] as const,
   list: (userId?: string) => [...notificationKeys.lists(), userId || "current_user"] as const,
+  count: (userId?: string) => [...notificationKeys.all, "count", userId || "current_user"] as const,
 }
 
-// Hook for fetching notifications
+// Hook for fetching notifications by user ID
 export function useNotifications(userId?: string) {
   return useQuery({
     queryKey: notificationKeys.list(userId),
-    queryFn: () => notificationsApi.getAll(),
+    queryFn: async () => {
+      if (!userId) {
+        const token = getToken()
+        if (!token) throw new Error("No token found")
+        
+        const decoded = decodeToken(token) as any
+        userId = decoded?.userId || decoded?.sub || decoded?.id
+        if (!userId) throw new Error("No user ID found")
+      }
+      
+      return notificationsApi.getByUserId(userId)
+    },
+    enabled: !!userId,
     staleTime: 1 * 60 * 1000, // 1 minute
     refetchInterval: 2 * 60 * 1000, // Refetch every 2 minutes for real-time updates
+  })
+}
+
+// Hook for getting notification count
+export function useNotificationCount(userId?: string) {
+  return useQuery({
+    queryKey: notificationKeys.count(userId),
+    queryFn: async () => {
+      let resolvedUserId = userId
+      if (!resolvedUserId) {
+        const token = getToken()
+        if (!token) throw new Error("No token found")
+        
+        const decoded = decodeToken(token) as any
+        resolvedUserId = decoded?.userId || decoded?.sub || decoded?.id
+        if (!resolvedUserId) throw new Error("No user ID found")
+      }
+      
+      return notificationsApi.getCount(resolvedUserId)
+    },
+    staleTime: 30 * 1000, // 30 seconds
+    refetchInterval: 30 * 1000, // Refetch every 30 seconds
   })
 }
 
@@ -28,60 +62,39 @@ export function useMarkNotificationRead() {
   return useMutation({
     mutationFn: notificationsApi.markAsRead,
     onSuccess: () => {
-      // Invalidate notifications
+      // Invalidate notifications and count
       queryClient.invalidateQueries({ queryKey: notificationKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all })
     },
   })
 }
 
-export function useNotificationCount() {
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [loading, setLoading] = useState(true)
+// Hook for marking all notifications as read
+export function useMarkAllNotificationsRead() {
+  const queryClient = useQueryClient()
 
-  const fetchUnreadCount = async () => {
-    try {
-      const token = getToken()
-      if (!token) {
-        setUnreadCount(0)
-        setLoading(false)
-        return
-      }
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      return notificationsApi.markAllAsRead(userId)
+    },
+    onSuccess: () => {
+      // Invalidate notifications and count
+      queryClient.invalidateQueries({ queryKey: notificationKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all })
+    },
+  })
+}
 
-      const decoded = decodeToken(token) as any
-      const userId = decoded?.userId || decoded?.sub || decoded?.id
-      if (!userId) {
-        setUnreadCount(0)
-        setLoading(false)
-        return
-      }
+// Hook for deleting notification
+export function useDeleteNotification() {
+  const queryClient = useQueryClient()
 
-      // Try to use the dedicated count endpoint first
-      try {
-        const countData = await notificationsApi.getCount(userId)
-        setUnreadCount(countData.count || 0)
-      } catch (countError) {
-        // Fallback to fetching all notifications and counting unread
-        const data = await notificationsApi.getByUserId(userId)
-        const unread = (data || []).filter((n: any) => 
-          n.status !== "READ" && !n.isRead
-        ).length
-        setUnreadCount(unread)
-      }
-    } catch (error) {
-      console.error("Error fetching unread count:", error)
-      setUnreadCount(0)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchUnreadCount()
-    
-    // Refetch every 30 seconds to keep count updated
-    const interval = setInterval(fetchUnreadCount, 30000)
-    return () => clearInterval(interval)
-  }, [])
-
-  return { unreadCount, loading, refetch: fetchUnreadCount }
+  return useMutation({
+    mutationFn: notificationsApi.delete,
+    onSuccess: () => {
+      // Invalidate notifications and count
+      queryClient.invalidateQueries({ queryKey: notificationKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all })
+    },
+  })
 }
