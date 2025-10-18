@@ -1,4 +1,3 @@
-// components/matches-view
 "use client"
 
 import { useEffect, useState, useCallback, memo } from "react"
@@ -58,11 +57,8 @@ export function MatchesView() {
       )
       setRoomDetails(roomDetailsMap)
 
-      // โหลดรีวิวที่มีอยู่แล้ว
       const reviewsRes = await reviewsApi.getAll({ reviewerId: userId })
       const existingReviews = reviewsRes.results || []
-      
-      // สร้าง map ของรีวิวโดยใช้ revieweeId เป็น key
       const reviewsMap: Record<string, { rating: number; comment: string; createdAt: string }> = {}
       existingReviews.forEach((review: any) => {
         reviewsMap[review.revieweeId] = {
@@ -130,17 +126,16 @@ export function MatchesView() {
     ({ match, type }: { match: any; type: "host" | "seeker" }) => {
       const isHost = type === "host"
       const counterparty = isHost
-        ? { name: match.seekerName, contact: match.seekerContact }
-        : { name: match.hostName, contact: match.hostContact }
+      ? { name: match.seeker.firstName + " " + match.seeker.lastName, contact: match.seeker }
+      : { name: match.host.firstName + " " + match.host.lastName, contact: match.host }
 
-      const room = roomDetails[match.listingId]
+      const room = match.room
       const revieweeId = isHost ? match.seekerId : match.hostId
       const existingReview = reviews[revieweeId]
       const isDialogOpen = dialogStates[match.id] || false
       const canViewContact = match.status === "ACCEPTED"
       const isSaving = savingReview[match.id] || false
 
-      // Local state for textarea to prevent typing lag
       const [localForm, setLocalForm] = useState<{ rating: number; comment: string }>(
         formStates[match.id] || getInitialFormState(match.id),
       )
@@ -153,10 +148,10 @@ export function MatchesView() {
           <CardHeader className="border-b border-gray-100 pb-3">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1 flex-1">
-                <CardTitle className="text-base text-balance">{match.listingTitle || room?.title || "Room"}</CardTitle>
+                <CardTitle className="text-base text-balance">{room?.title || "Room"}</CardTitle>
                 <div className="flex items-center text-xs text-muted-foreground">
                   <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
-                  {match.listingLocation || room?.location || "Location"}
+                {room?.location || "Location"}
                 </div>
               </div>
               <Badge
@@ -175,12 +170,12 @@ export function MatchesView() {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className={`flex items-center text-base font-semibold ${type === "host" ? "text-emerald-600" : "text-pink-600"}`}>
                 <DollarSign className="h-4 w-4 mr-0.5" />
-                {match.listingPrice ?? room?.pricePerMonth ?? "N/A"}/month
+              {room?.pricePerMonth ?? "N/A"}/month
               </div>
-              {match.matchedAt && (
+            {match.createdAt && (
                 <div className="flex items-center text-xs text-muted-foreground">
                   <Calendar className="h-3 w-3 mr-1" />
-                  Matched {new Date(match.matchedAt).toLocaleDateString()}
+                  Matched {new Date(match.createdAt).toLocaleDateString()}
                 </div>
               )}
             </div>
@@ -268,25 +263,25 @@ export function MatchesView() {
                           </Alert>
 
                           <div className="space-y-3">
-                            {counterparty.contact?.line && (
+                      {counterparty.contact.contactLine && (
                               <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-blue-50 to-white rounded-xl border border-blue-100">
                                 <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                                   <MessageCircle className="h-5 w-5 text-blue-600" />
                                 </div>
                                 <div>
                                   <div className="font-medium text-sm">Line</div>
-                                  <div className="text-sm text-muted-foreground">{counterparty.contact.line}</div>
+                            <div className="text-sm text-muted-foreground">{counterparty.contact.contactLine}</div>
                                 </div>
                               </div>
                             )}
-                            {counterparty.contact?.email && (
+                      {counterparty.contact.contactEmail && (
                               <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-100">
                                 <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
                                   <Mail className="h-5 w-5 text-purple-600" />
                                 </div>
                                 <div>
                                   <div className="font-medium text-sm">Email</div>
-                                  <div className="text-sm text-muted-foreground">{counterparty.contact.email}</div>
+                            <div className="text-sm text-muted-foreground">{counterparty.contact.contactEmail}</div>
                                 </div>
                               </div>
                             )}
@@ -383,6 +378,7 @@ export function MatchesView() {
     },
     (prev, next) => prev.match.id === next.match.id && prev.type === next.type,
   )
+
 
   // ----------------------- Render -----------------------
   return (

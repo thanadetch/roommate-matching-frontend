@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Bell, Home, Heart, User, Settings, LogOut } from "lucide-react"
 import { tokenStorage } from "@/lib/api-client"
+import { useNotificationCount } from "@/lib/hooks/use-notifications"
 
 const navigationItems = [
   { href: "/", label: "Browse", icon: Home },
@@ -24,7 +25,8 @@ const navigationItems = [
 
 export function Navigation() {
   const pathname = usePathname()
-  const router = useRouter() 
+  const router = useRouter()
+  const { unreadCount } = useNotificationCount()
 
   const handleSignOut = () => {
     tokenStorage.clear()
@@ -61,12 +63,14 @@ export function Navigation() {
           <Button variant="ghost" size="sm" asChild>
             <Link href="/notifications" className="relative">
               <Bell className="h-4 w-4" />
-              <Badge
-                variant="destructive"
-                className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
-              >
-                3
-              </Badge>
+              {unreadCount > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Badge>
+              )}
             </Link>
           </Button>
 
