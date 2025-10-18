@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, memo, useCallback } from "react"
+import { useMemo, useState, memo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Filter, MapPin, DollarSign, Cigarette, Dog, Moon, Volume2, X } from "lucide-react"
 
 type BrowseFilters = {
@@ -164,6 +165,13 @@ export function BrowseListings() {
   const router = useRouter()
   const queryClient = useQueryClient()
 
+  const currentUserId = useMemo(() => {
+    const token = tokenStorage.get()
+    if (!token) return null
+    const payload = jwt.decode(token)
+    return payload?.sub || payload?.id || null
+  }, [])
+
   const [draftFilters, setDraftFilters] = useState<BrowseFilters>({
     location: "",
     priceMin: "",
@@ -210,21 +218,21 @@ export function BrowseListings() {
   const listings = Array.isArray(data) ? data : (data?.results ?? [])
 
   const filteredListings = listings.filter((listing: any) => {
-  // Price filter
-  const minPrice = appliedFilters.priceMin ? Number(appliedFilters.priceMin) : 0
-  const maxPrice = appliedFilters.priceMax ? Number(appliedFilters.priceMax) : Infinity
-  if (listing.pricePerMonth < minPrice || listing.pricePerMonth > maxPrice) return false
+    // Price filter
+    const minPrice = appliedFilters.priceMin ? Number(appliedFilters.priceMin) : 0
+    const maxPrice = appliedFilters.priceMax ? Number(appliedFilters.priceMax) : Number.POSITIVE_INFINITY
+    if (listing.pricePerMonth < minPrice || listing.pricePerMonth > maxPrice) return false
 
-  // Lifestyle filter
-  if (appliedFilters.lifestylePreferences.includes("noSmoking") && !listing.noSmoking) return false
-  if (appliedFilters.lifestylePreferences.includes("noPets") && !listing.noPets) return false
-  if (appliedFilters.lifestylePreferences.includes("quiet") && !listing.quiet) return false
-  if (appliedFilters.lifestylePreferences.includes("nightOwl") && !listing.nightOwl) return false
+    // Lifestyle filter
+    if (appliedFilters.lifestylePreferences.includes("noSmoking") && !listing.noSmoking) return false
+    if (appliedFilters.lifestylePreferences.includes("noPets") && !listing.noPets) return false
+    if (appliedFilters.lifestylePreferences.includes("quiet") && !listing.quiet) return false
+    if (appliedFilters.lifestylePreferences.includes("nightOwl") && !listing.nightOwl) return false
 
-  return true
-})
+    return true
+  })
 
-    const handleLocationChange = (value: string) => {
+  const handleLocationChange = (value: string) => {
     setDraftFilters((prev) => ({ ...prev, location: value }))
   }
 
@@ -255,7 +263,6 @@ export function BrowseListings() {
     setDraftFilters(reset)
     setAppliedFilters(reset)
   }
-
 
   const handleExpressInterest = async (listingId: string) => {
     try {
@@ -339,6 +346,8 @@ export function BrowseListings() {
             if (listing.quiet) lifestylePrefs.push({ icon: Volume2, label: "Quiet" })
             if (listing.nightOwl) lifestylePrefs.push({ icon: Moon, label: "Night Owl" })
 
+            const isOwnListing = currentUserId && listing.hostId && currentUserId === listing.hostId
+
             return (
               <Card
                 key={listing.id}
@@ -392,33 +401,50 @@ export function BrowseListings() {
                       <Link href={`/listing/${listing.id}`}>View Details</Link>
                     </Button>
 
-                    <Dialog
-                      open={openDialogFor === listing.id}
-                      onOpenChange={(open) => setOpenDialogFor(open ? listing.id : null)}
-                    >
-                      <DialogTrigger asChild>
-                        <Button variant="secondary" className="flex-1">
-                          Express Interest
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Send Interest</DialogTitle>
-                        </DialogHeader>
-                        <Textarea
-                          placeholder="Write a message..."
-                          value={interestMessage}
-                          onChange={(e) => setInterestMessage(e.target.value)}
-                        />
-                        <Button
-                          className="mt-4 w-full"
-                          onClick={() => handleExpressInterest(listing.id)}
-                          disabled={isSubmitting}
-                        >
-                          Send
-                        </Button>
-                      </DialogContent>
-                    </Dialog>
+                    {isOwnListing ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex-1">
+                              <Button variant="secondary" className="w-full" disabled>
+                                Express Interest
+                              </Button>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{"You can't express interest in your own listing"}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <Dialog
+                        open={openDialogFor === listing.id}
+                        onOpenChange={(open) => setOpenDialogFor(open ? listing.id : null)}
+                      >
+                        <DialogTrigger asChild>
+                          <Button variant="secondary" className="flex-1">
+                            Express Interest
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Send Interest</DialogTitle>
+                          </DialogHeader>
+                          <Textarea
+                            placeholder="Write a message..."
+                            value={interestMessage}
+                            onChange={(e) => setInterestMessage(e.target.value)}
+                          />
+                          <Button
+                            className="mt-4 w-full"
+                            onClick={() => handleExpressInterest(listing.id)}
+                            disabled={isSubmitting}
+                          >
+                            Send
+                          </Button>
+                        </DialogContent>
+                      </Dialog>
+                    )}
                   </div>
                 </CardFooter>
               </Card>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Check, X, DollarSign, Cigarette, Dog, Moon, Volume2, MessageSquare, MapPin, Calendar } from "lucide-react"
 import { roommateMatchingApi, tokenStorage, jwt } from "@/lib/api-client"
+import { useToast } from "@/lib/hooks/use-toast"
 
 interface User {
   id: string
@@ -37,34 +38,32 @@ interface Interest {
   host?: User
   message?: string | null
   status: "PENDING" | "ACCEPTED" | "REJECTED"
-  rejectionReason?: string
   createdAt?: string
 }
 
 export function InterestsManagement() {
-  const [interests, setInterests] = useState<{ pending: Interest[]; accepted: Interest[]; rejected: Interest[] }>({
-    pending: [],
-    accepted: [],
-    rejected: [],
-  })
+  const [interests, setInterests] = useState<{ pending: Interest[]; accepted: Interest[]; rejected: Interest[] }>(
+    { pending: [], accepted: [], rejected: [] }
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [rejectionReason, setRejectionReason] = useState("")
-  const [selectedInterest, setSelectedInterest] = useState<string | null>(null)
-  const [isHost, setIsHost] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
+  const [role, setRole] = useState<"host" | "seeker" | null>(null)
+  const { toast } = useToast()
 
   // ------------------- Load Interests -------------------
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+
     try {
       const token = tokenStorage.get()
       const payload = token ? jwt.decode(token) : null
-      const id = payload?.sub || payload?.id
+      const id = payload?.sub || payload?.id || payload?.userId
       const role = payload?.role
+
       setUserId(id)
-      setIsHost(role === "host")
+      setRole(role)
 
       if (!id) {
         setError("User not authenticated")
@@ -72,59 +71,71 @@ export function InterestsManagement() {
         return
       }
 
-      let pending: Interest[] = []
-      let accepted: Interest[] = []
-      let rejected: Interest[] = []
-
-      if (role === "host") {
-        ;[pending, accepted, rejected] = await Promise.all([
-          roommateMatchingApi.getInterestsForHost(id, { status: "PENDING" }),
-          roommateMatchingApi.getInterestsForHost(id, { status: "ACCEPTED" }),
-          roommateMatchingApi.getInterestsForHost(id, { status: "REJECTED" }),
-        ])
-      } else {
-        ;[pending, accepted, rejected] = await Promise.all([
-          roommateMatchingApi.getInterestsForSeeker(id, { status: "PENDING" }),
-          roommateMatchingApi.getInterestsForSeeker(id, { status: "ACCEPTED" }),
-          roommateMatchingApi.getInterestsForSeeker(id, { status: "REJECTED" }),
-        ])
-      }
+      // Fetch both host and seeker interests
+      const [pendingHost, pendingSeeker] = await Promise.all([
+        roommateMatchingApi.getInterestsForHost(id, { status: "PENDING" }),
+        roommateMatchingApi.getInterestsForSeeker(id, { status: "PENDING" }),
+      ])
+      const [acceptedHost, acceptedSeeker] = await Promise.all([
+        roommateMatchingApi.getInterestsForHost(id, { status: "ACCEPTED" }),
+        roommateMatchingApi.getInterestsForSeeker(id, { status: "ACCEPTED" }),
+      ])
+      const [rejectedHost, rejectedSeeker] = await Promise.all([
+        roommateMatchingApi.getInterestsForHost(id, { status: "REJECTED" }),
+        roommateMatchingApi.getInterestsForSeeker(id, { status: "REJECTED" }),
+      ])
 
       setInterests({
-        pending: pending || [],
-        accepted: accepted || [],
-        rejected: rejected || [],
+        pending: [...(pendingHost || []), ...(pendingSeeker || [])],
+        accepted: [...(acceptedHost || []), ...(acceptedSeeker || [])],
+        rejected: [...(rejectedHost || []), ...(rejectedSeeker || [])],
       })
     } catch (e: any) {
-      console.error(e)
+      console.error("[v1] Error loading interests:", e)
       setError(e?.message || "Failed to load interests")
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
   // ------------------- Actions -------------------
   const handleAcceptInterest = async (interestId: string) => {
     try {
       await roommateMatchingApi.acceptInterest(interestId)
+      toast({
+        title: "Interest Accepted",
+        description: "You have successfully accepted this interest.",
+      })
       await load()
-    } catch (e) {
+    } catch (e: any) {
       console.error(e)
+      toast({
+        title: "Error",
+        description: e?.message || "Failed to accept interest",
+        variant: "destructive",
+      })
     }
   }
 
-  const handleRejectInterest = async (interestId: string, reason?: string) => {
+  const handleRejectInterest = async (interestId: string) => {
     try {
       await roommateMatchingApi.rejectInterest(interestId)
-      setRejectionReason("")
-      setSelectedInterest(null)
+      toast({
+        title: "Interest Rejected",
+        description: "You have rejected this interest.",
+      })
       await load()
-    } catch (e) {
+    } catch (e: any) {
       console.error(e)
+      toast({
+        title: "Error",
+        description: e?.message || "Failed to reject interest",
+        variant: "destructive",
+      })
     }
   }
 
@@ -139,132 +150,118 @@ export function InterestsManagement() {
   }
 
   // ------------------- InterestCard Component -------------------
-  const InterestCard = ({ interest, isHostView = false }: { interest: Interest; isHostView?: boolean }) => {
-    const userToShow = isHostView ? interest.seeker : interest.host
-    const userName = userToShow ? `${userToShow.firstName ?? ""} ${userToShow.lastName ?? ""}`.trim() : "Unnamed User"
+  const InterestCard = ({ interest }: { interest: Interest }) => {
+  const isHostView = interest.host?.id === userId
+  const userToShow = isHostView ? interest.seeker : interest.host
+  const userName = userToShow ? `${userToShow.firstName ?? ""} ${userToShow.lastName ?? ""}`.trim() : "Unnamed User"
+  const status = interest.status.toUpperCase()
 
-    return (
-      <Card key={interest.id} className="mb-4">
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={userToShow?.avatar ?? "/diverse-user-avatars.png"} alt={userName} />
-                  <AvatarFallback>{userName.split(" ").map((n) => n[0]).join("")}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="font-semibold text-base">{userName}</h3>
-                  <div className="flex items-center text-sm text-muted-foreground">
-                    <MapPin className="h-3 w-3 mr-1" />
-                    {interest.room?.location ?? "Unknown location"}
-                  </div>
+  // ------------------- Set Card Background Based on Status -------------------
+  let cardClass = "mb-4"
+  if (status === "REJECTED") cardClass += " bg-red-50"
+  else if (status === "ACCEPTED") cardClass += " bg-green-50"
+  else if (status === "PENDING") cardClass += " bg-yellow-50"
+
+  return (
+    <Card key={interest.id} className={cardClass}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-3">
+              <Avatar className="h-10 w-10">
+                <AvatarImage src={userToShow?.avatar ?? "/diverse-user-avatars.png"} alt={userName} />
+                <AvatarFallback>
+                  {userName
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <h3 className="font-semibold text-base">{userName}</h3>
+                <div className="flex items-center text-sm text-muted-foreground">
+                  <MapPin className="h-3 w-3 mr-1" />
+                  {interest.room?.location ?? "Unknown location"}
                 </div>
-              </div>
-
-              <div className="flex items-center gap-4 text-sm flex-wrap">
-                <div className="flex items-center text-emerald-600 font-semibold">
-                  <DollarSign className="h-4 w-4 mr-1" />
-                  {interest.room?.pricePerMonth ? `${interest.room.pricePerMonth}/mo` : "N/A"}
-                </div>
-
-                <div className="flex items-center gap-1">
-                  {getLifestyleIcons(userToShow).map((item, idx) => (
-                    <Badge key={idx} variant="outline" className="p-1">{item.icon}</Badge>
-                  ))}
-                </div>
-
-                {interest.message && (
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 text-xs">
-                        <MessageSquare className="h-3 w-3 mr-1" /> View Message
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Message from {userName}</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        <div className="p-4 bg-muted rounded-lg">
-                          <p className="text-sm">{interest.message}</p>
-                        </div>
-                        {interest.createdAt && (
-                          <div className="text-xs text-muted-foreground">
-                            Sent {new Date(interest.createdAt).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                )}
-
-                {interest.createdAt && (
-                  <div className="flex items-center text-muted-foreground">
-                    <Calendar className="h-3 w-3 mr-1" />
-                    {new Date(interest.createdAt).toLocaleDateString()}
-                  </div>
-                )}
-
-                {/* Show rejection reason if rejected */}
-                {interest.status === "REJECTED" && interest.rejectionReason && (
-                  <div className="text-sm text-red-600 mt-1">Reason: {interest.rejectionReason}</div>
-                )}
               </div>
             </div>
 
-            {/* Host Actions */}
-            {isHostView && interest.status === "PENDING" && (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-green-600 border-green-600 hover:bg-green-600 hover:text-white"
-                  onClick={() => handleAcceptInterest(interest.id)}
-                >
-                  <Check className="h-4 w-4 mr-1" /> Accept
-                </Button>
+            <div className="flex items-center gap-4 text-sm flex-wrap">
+              <div className="flex items-center text-emerald-600 font-semibold">
+                <DollarSign className="h-4 w-4 mr-1" />
+                {interest.room?.pricePerMonth ? `${interest.room.pricePerMonth}/mo` : "N/A"}
+              </div>
 
-                <Dialog open={selectedInterest === interest.id} onOpenChange={(open) => setSelectedInterest(open ? interest.id : null)}>
+              <div className="flex items-center gap-1">
+                {getLifestyleIcons(userToShow).map((item, idx) => (
+                  <Badge key={idx} variant="outline" className="p-1">
+                    {item.icon}
+                  </Badge>
+                ))}
+              </div>
+
+              {interest.message && (
+                <Dialog>
                   <DialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-red-600 border-red-600 hover:bg-red-600 hover:text-white"
-                    >
-                      <X className="h-4 w-4 mr-1" /> Reject
+                    <Button variant="ghost" size="sm" className="h-7 text-xs">
+                      <MessageSquare className="h-3 w-3 mr-1" /> View Message
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Reject Interest</DialogTitle>
+                      <DialogTitle>Message from {userName}</DialogTitle>
                     </DialogHeader>
-                    <Textarea
-                      placeholder="Enter rejection reason..."
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                      className="mb-3"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" onClick={() => setSelectedInterest(null)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={() => handleRejectInterest(interest.id, rejectionReason)}
-                      >
-                        Confirm Reject
-                      </Button>
+                    <div className="space-y-4">
+                      <div className="p-4 bg-muted rounded-lg">
+                        <p className="text-sm">{interest.message}</p>
+                      </div>
+                      {interest.createdAt && (
+                        <div className="text-xs text-muted-foreground">
+                          Sent {new Date(interest.createdAt).toLocaleDateString()}
+                        </div>
+                      )}
                     </div>
                   </DialogContent>
                 </Dialog>
-              </div>
-            )}
+              )}
+
+              {interest.createdAt && (
+                <div className="flex items-center text-muted-foreground">
+                  <Calendar className="h-3 w-3 mr-1" />
+                  {new Date(interest.createdAt).toLocaleDateString()}
+                </div>
+              )}
+            </div>
           </div>
-        </CardContent>
-      </Card>
-    )
-  }
+
+          {/* Host Actions */}
+          {isHostView && status === "PENDING" && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-green-600 border-green-600 hover:bg-green-600 hover:text-white bg-transparent"
+                onClick={() => handleAcceptInterest(interest.id)}
+              >
+                <Check className="h-4 w-4 mr-1" /> Accept
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-red-600 border-red-600 hover:bg-red-600 hover:text-white bg-transparent"
+                onClick={() => handleRejectInterest(interest.id)}
+              >
+                <X className="h-4 w-4 mr-1" /> Reject
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 
   // ------------------- Render -------------------
   return (
@@ -278,45 +275,45 @@ export function InterestsManagement() {
       )}
 
       {loading ? (
-        <div className="text-center text-muted-foreground">Loading...</div>
+        <div className="text-center text-muted-foreground py-8">Loading...</div>
       ) : (
         <Tabs defaultValue="pending" className="w-full">
           <TabsList className="grid grid-cols-3 w-full mb-4">
-            <TabsTrigger value="pending">Pending</TabsTrigger>
-            <TabsTrigger value="accepted">Accepted</TabsTrigger>
-            <TabsTrigger value="rejected">Rejected</TabsTrigger>
+            <TabsTrigger value="pending">
+              Pending {interests.pending.length > 0 && `(${interests.pending.length})`}
+            </TabsTrigger>
+            <TabsTrigger value="accepted">
+              Accepted {interests.accepted.length > 0 && `(${interests.accepted.length})`}
+            </TabsTrigger>
+            <TabsTrigger value="rejected">
+              Rejected {interests.rejected.length > 0 && `(${interests.rejected.length})`}
+            </TabsTrigger>
           </TabsList>
 
           {/* Pending */}
           <TabsContent value="pending">
             {interests.pending.length > 0 ? (
-              interests.pending.map((interest) => (
-                <InterestCard key={interest.id} interest={interest} isHostView={isHost} />
-              ))
+              interests.pending.map((interest) => <InterestCard key={interest.id} interest={interest} />)
             ) : (
-              <p className="text-muted-foreground text-center">No pending interests</p>
+              <p className="text-muted-foreground text-center py-8">No pending interests</p>
             )}
           </TabsContent>
 
           {/* Accepted */}
           <TabsContent value="accepted">
             {interests.accepted.length > 0 ? (
-              interests.accepted.map((interest) => (
-                <InterestCard key={interest.id} interest={interest} isHostView={isHost} />
-              ))
+              interests.accepted.map((interest) => <InterestCard key={interest.id} interest={interest} />)
             ) : (
-              <p className="text-muted-foreground text-center">No accepted interests</p>
+              <p className="text-muted-foreground text-center py-8">No accepted interests</p>
             )}
           </TabsContent>
 
           {/* Rejected */}
           <TabsContent value="rejected">
             {interests.rejected.length > 0 ? (
-              interests.rejected.map((interest) => (
-                <InterestCard key={interest.id} interest={interest} isHostView={isHost} />
-              ))
+              interests.rejected.map((interest) => <InterestCard key={interest.id} interest={interest} />)
             ) : (
-              <p className="text-muted-foreground text-center">No rejected interests</p>
+              <p className="text-muted-foreground text-center py-8">No rejected interests</p>
             )}
           </TabsContent>
         </Tabs>
