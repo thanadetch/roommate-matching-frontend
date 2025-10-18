@@ -1,52 +1,74 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Plus, Eye, Edit, XCircle, Calendar, DollarSign, MapPin, Home, Users } from "lucide-react"
-
-// Mock data for current user's listings
-const mockUserListings = [
-  {
-    id: "1",
-    title: "Cozy Downtown Apartment",
-    location: "Downtown Seattle",
-    pricePerMonth: 1200,
-    status: "OPEN" as const,
-    createdAt: "2024-01-10",
-    interestCount: 5,
-  },
-  {
-    id: "2",
-    title: "Quiet Suburban Room",
-    location: "Bellevue",
-    pricePerMonth: 800,
-    status: "OPEN" as const,
-    createdAt: "2024-01-05",
-    interestCount: 3,
-  },
-  {
-    id: "3",
-    title: "Modern Loft Space",
-    location: "Capitol Hill",
-    pricePerMonth: 1500,
-    status: "CLOSED" as const,
-    createdAt: "2024-01-08",
-    interestCount: 8,
-  },
-]
+import { ApiError, jwt, roomsApi, roommateMatchingApi, tokenStorage } from "@/lib/api-client"
 
 export function MyListings() {
-  const [listings, setListings] = useState(mockUserListings)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [allRooms, setAllRooms] = useState<any[]>([])
+  const [interestCounts, setInterestCounts] = useState<Record<string, number>>({})
 
-  const handleCloseListing = (listingId: string) => {
-    setListings(
-      listings.map((listing) => (listing.id === listingId ? { ...listing, status: "CLOSED" as const } : listing)),
-    )
-    console.log("Closing listing:", listingId)
+  const userId = useMemo(() => {
+    const t = tokenStorage.get()
+    const payload = t ? jwt.decode(t) : null
+    return payload?.sub || payload?.id || null
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    async function load() {
+      try {
+        setError(null)
+        setLoading(true)
+        const rooms = await roomsApi.getAll()
+        if (!alive) return
+        const roomsList = Array.isArray(rooms) ? rooms : []
+        setAllRooms(roomsList)
+
+        if (userId) {
+          const counts: Record<string, number> = {}
+          for (const room of roomsList.filter((r) => r.hostId === userId)) {
+            try {
+              const countData = await roommateMatchingApi.getInterestCounts(userId)
+              counts[room.id] = countData.pending || 0
+            } catch (e) {
+              counts[room.id] = 0
+            }
+          }
+          if (alive) setInterestCounts(counts)
+        }
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : "Failed to load listings")
+      } finally {
+        if (alive) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      alive = false
+    }
+  }, [userId])
+
+  const listings = useMemo(() => allRooms.filter((r) => (userId ? r.hostId === userId : true)), [allRooms, userId])
+
+  const handleCloseListing = async (listingId: string) => {
+    try {
+      await roomsApi.update(listingId, { status: "CLOSED" })
+      setAllRooms((prev) => prev.map((r) => (r.id === listingId ? { ...r, status: "CLOSED" } : r)))
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to close listing")
+    }
+  }
+
+  if (loading) {
+    return <Card className="p-12 text-center">Loading…</Card>
   }
 
   return (
@@ -64,10 +86,16 @@ export function MyListings() {
         </Button>
       </div>
 
+      {error && (
+        <Alert className="mb-4">
+          <AlertDescription className="text-red-600">{error}</AlertDescription>
+        </Alert>
+      )}
+
       {listings.length === 0 ? (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-2">
-            <h2 className="text-lg font-semibold">Your Listings ({listings.length})</h2>
+            <h2 className="text-lg font-semibold">Your Listings (0)</h2>
           </div>
           <Card className="rounded-2xl border-0 shadow-sm bg-gradient-to-br from-white to-emerald-50/30">
             <CardContent className="p-16 text-center">
@@ -115,12 +143,14 @@ export function MyListings() {
                         </div>
                         <div className="flex items-center text-muted-foreground">
                           <Users className="h-4 w-4 mr-1.5" />
-                          <span className="font-medium text-emerald-600">{listing.interestCount}</span>
-                          <span className="ml-1">{listing.interestCount === 1 ? "person" : "people"} interested</span>
+                          <span className="font-medium text-emerald-600">{interestCounts[listing.id] ?? 0}</span>
+                          <span className="ml-1">
+                            {(interestCounts[listing.id] ?? 0) === 1 ? "person" : "people"} interested
+                          </span>
                         </div>
                         <div className="flex items-center text-muted-foreground">
                           <Calendar className="h-4 w-4 mr-1.5" />
-                          {new Date(listing.createdAt).toLocaleDateString()}
+                          {listing.createdAt ? new Date(listing.createdAt).toLocaleDateString() : "-"}
                         </div>
                       </div>
                     </div>
@@ -158,18 +188,17 @@ export function MyListings() {
                             <Edit className="h-4 w-4" />
                           </Link>
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleCloseListing(listing.id)}
-                          className={`h-9 w-9 p-0 rounded-lg hover:bg-red-50 hover:text-red-600 ${
-                            listing.status === "CLOSED" ? "invisible" : ""
-                          }`}
-                          title="Close listing"
-                          disabled={listing.status === "CLOSED"}
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
+                        {listing.status === "OPEN" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCloseListing(listing.id)}
+                            className="h-9 w-9 p-0 rounded-lg hover:bg-red-50 hover:text-red-600"
+                            title="Close listing"
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -178,18 +207,6 @@ export function MyListings() {
             ))}
           </div>
         </div>
-      )}
-
-      {listings.some((listing) => listing.interestCount > 0) && (
-        <Alert className="mt-6 rounded-xl border-emerald-200 bg-emerald-50/50">
-          <AlertDescription className="text-sm">
-            You have pending interests on your listings.{" "}
-            <Link href="/matching/interests" className="font-medium underline hover:text-emerald-700 transition-colors">
-              Review them here
-            </Link>
-            .
-          </AlertDescription>
-        </Alert>
       )}
     </div>
   )

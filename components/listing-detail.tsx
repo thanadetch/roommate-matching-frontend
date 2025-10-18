@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,53 +21,128 @@ import {
   ArrowLeft,
   User,
   CheckCircle2,
+  VolumeX,
+  Moon,
 } from "lucide-react"
+import { ApiError, roommateMatchingApi, jwt, roomsApi, tokenStorage } from "@/lib/api-client"
 
 interface ListingDetailProps {
   listingId: string
 }
 
 export function ListingDetail({ listingId }: ListingDetailProps) {
+  const [listing, setListing] = useState<any | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [interestMessage, setInterestMessage] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
+  const [isSending, setIsSending] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [existingInterest, setExistingInterest] = useState<any>(null)
+  const [checkingInterest, setCheckingInterest] = useState(false)
 
-  // Mock current user - in real app this would come from auth context
-  const currentUserId = "user1"
+  const token = tokenStorage.get()
+  const payload = token ? jwt.decode(token) : null
+  const currentUserId = payload?.sub || payload?.id || null
 
-  const listing = mockListings.find((l) => l.id === listingId)
+  useEffect(() => {
+    let alive = true
+    async function load() {
+      try {
+        setError(null)
+        setLoading(true)
+        const data = await roomsApi.getById(listingId)
+        if (!alive) return
+        console.log("[v0] Listing data received:", data)
+        console.log("[v0] Lifestyle preferences:", {
+          noSmoking: data.noSmoking,
+          noPet: data.noPet,
+          quiet: data.quiet,
+          nightOwl: data.nightOwl,
+        })
+        setListing(data)
+
+        if (currentUserId && data.hostId !== currentUserId) {
+          setCheckingInterest(true)
+          try {
+            const interests = await roommateMatchingApi.getInterestsForSeeker(currentUserId)
+            const existing = interests.find((i: any) => i.listingId === listingId)
+            if (alive) setExistingInterest(existing || null)
+          } catch (e) {
+            console.error("[v0] Failed to check existing interest:", e)
+          } finally {
+            if (alive) setCheckingInterest(false)
+          }
+        }
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : "Listing not found")
+      } finally {
+        if (alive) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      alive = false
+    }
+  }, [listingId, currentUserId])
+
+  if (loading) {
+    return <Card className="p-12 container mx-auto mt-8">Loading…</Card>
+  }
 
   if (!listing) {
     return (
       <div className="container mx-auto px-4 py-8 bg-white min-h-screen">
         <Alert className="rounded-xl border-red-200 bg-red-50">
-          <AlertDescription>Listing not found. Please check the URL and try again.</AlertDescription>
+          <AlertDescription>{error ?? "Listing not found. Please check the URL and try again."}</AlertDescription>
         </Alert>
       </div>
     )
   }
 
-  const isHost = listing.hostId === currentUserId
+  const isHost = currentUserId && listing.hostId === currentUserId
 
   const handleExpressInterest = async () => {
-    setIsLoading(true)
-    // Mock API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    console.log("Expressing interest in listing:", listingId, "with message:", interestMessage)
-    setInterestMessage("")
-    setIsLoading(false)
-    setShowSuccess(true)
-    setTimeout(() => setShowSuccess(false), 3000)
+    try {
+      setIsSending(true)
+      const seekerId = currentUserId
+      if (!seekerId) {
+        setError("User not authenticated")
+        return
+      }
+
+      await roommateMatchingApi.createInterest({
+        roomId: listingId,
+        seekerId,
+        hostId: listing.hostId,
+        message: interestMessage || undefined,
+      })
+      setInterestMessage("")
+      setShowSuccess(true)
+      setTimeout(() => setShowSuccess(false), 3000)
+      const interests = await roommateMatchingApi.getInterestsForSeeker(seekerId)
+      const existing = interests.find((i: any) => i.listingId === listingId)
+      setExistingInterest(existing || null)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to send interest")
+    } finally {
+      setIsSending(false)
+    }
   }
 
-  const handleCloseListing = () => {
-    console.log("Closing listing:", listingId)
-    // In real app, this would update the listing status
+  const handleCloseListing = async () => {
+    try {
+      await roomsApi.update(listingId, { status: "CLOSED" })
+      setListing((prev: any) => ({ ...prev, status: "CLOSED" }))
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to close listing")
+    }
   }
+
+  const canSendInterest = !isHost && listing.status === "OPEN" && !existingInterest && !checkingInterest
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl bg-white min-h-screen">
-      {/* Back Navigation */}
+      {/* Back */}
       <div className="mb-6">
         <Button variant="ghost" size="sm" asChild className="mb-4 rounded-lg hover:bg-emerald-50">
           <Link href="/">
@@ -82,7 +157,18 @@ export function ListingDetail({ listingId }: ListingDetailProps) {
         <Alert className="mb-6 rounded-xl border-emerald-200 bg-emerald-50 shadow-sm">
           <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           <AlertDescription className="text-emerald-800 text-sm">
-            Your interest has been sent to the host! They'll review your message and get back to you soon.
+            Your interest has been sent to the host!
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {existingInterest && (
+        <Alert className="mb-6 rounded-xl border-blue-200 bg-blue-50 shadow-sm">
+          <AlertDescription className="text-blue-800 text-sm">
+            You already sent interest for this listing. Status: <strong>{existingInterest.status}</strong>
+            {existingInterest.status === "REJECTED" && existingInterest.rejectionReason && (
+              <span> - Reason: {existingInterest.rejectionReason}</span>
+            )}
           </AlertDescription>
         </Alert>
       )}
@@ -123,7 +209,9 @@ export function ListingDetail({ listingId }: ListingDetailProps) {
                 <Calendar className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <div className="font-semibold">{new Date(listing.availableFrom).toLocaleDateString()}</div>
+                <div className="font-semibold">
+                  {listing.availableFrom ? new Date(listing.availableFrom).toLocaleDateString() : "-"}
+                </div>
                 <div className="text-sm text-muted-foreground">Available from</div>
               </div>
             </div>
@@ -132,7 +220,9 @@ export function ListingDetail({ listingId }: ListingDetailProps) {
                 <User className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <div className="font-semibold">{new Date(listing.createdAt).toLocaleDateString()}</div>
+                <div className="font-semibold">
+                  {listing.createdAt ? new Date(listing.createdAt).toLocaleDateString() : "-"}
+                </div>
                 <div className="text-sm text-muted-foreground">Listing date</div>
               </div>
             </div>
@@ -142,19 +232,19 @@ export function ListingDetail({ listingId }: ListingDetailProps) {
           <div>
             <h3 className="font-semibold mb-3 text-sm">House Rules</h3>
             <div className="flex gap-2 flex-wrap">
-              {listing.rules.noSmoking && (
+              {listing.rules?.noSmoking && (
                 <Badge variant="outline" className="rounded-lg border-gray-200 bg-white">
                   <Cigarette className="w-3 h-3 mr-1.5" />
                   No Smoking
                 </Badge>
               )}
-              {listing.rules.noPet && (
+              {listing.rules?.noPet && (
                 <Badge variant="outline" className="rounded-lg border-gray-200 bg-white">
                   <Dog className="w-3 h-3 mr-1.5" />
                   No Pets
                 </Badge>
               )}
-              {!listing.rules.noSmoking && !listing.rules.noPet && (
+              {!listing.rules?.noSmoking && !listing.rules?.noPet && (
                 <Badge variant="outline" className="text-muted-foreground rounded-lg border-gray-200 bg-white">
                   No specific restrictions
                 </Badge>
@@ -162,103 +252,152 @@ export function ListingDetail({ listingId }: ListingDetailProps) {
             </div>
           </div>
 
+          {/* Updated Lifestyle Preferences section */}
+          <div>
+            <h3 className="font-semibold mb-3 text-sm">Lifestyle Preferences</h3>
+            <div className="flex gap-2 flex-wrap">
+              {listing.noSmoking && (
+                <Badge variant="outline" className="rounded-lg border-gray-200 bg-white">
+                  <Cigarette className="w-3 h-3 mr-1.5" />
+                  No Smoking
+                </Badge>
+              )}
+              {listing.noPets && (   // <-- เพิ่มตรงนี้
+                <Badge variant="outline" className="rounded-lg border-gray-200 bg-white">
+                  <Dog className="w-3 h-3 mr-1.5" />
+                  No Pets
+                </Badge>
+              )}
+              {listing.quiet && (
+                <Badge variant="outline" className="rounded-lg border-gray-200 bg-white">
+                  <VolumeX className="w-3 h-3 mr-1.5" />
+                  Quiet
+                </Badge>
+              )}
+              {listing.nightOwl && (
+                <Badge variant="outline" className="rounded-lg border-gray-200 bg-white">
+                  <Moon className="w-3 h-3 mr-1.5" />
+                  Night Owl
+                </Badge>
+              )}
+              {!listing.noSmoking && !listing.noPets && !listing.quiet && !listing.nightOwl && (
+                <Badge variant="outline" className="text-muted-foreground rounded-lg border-gray-200 bg-white">
+                  No preferences specified
+                </Badge>
+              )}
+            </div>
+          </div>
+
+
           {/* Description */}
           <div>
             <h3 className="font-semibold mb-3 text-sm">Description</h3>
-            <p className="text-muted-foreground leading-relaxed text-sm">{listing.description}</p>
+            <p className="text-muted-foreground leading-relaxed text-sm">{listing.description || "-"}</p>
           </div>
 
-          {/* Host Section */}
+          {/* Host Actions */}
           {isHost && (
-            <div className="border-t border-gray-100 pt-6">
+            <div className="border-top border-gray-100 pt-6">
               <h3 className="font-semibold mb-4 flex items-center text-sm">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center mr-2">
                   <Shield className="h-4 w-4 text-emerald-600" />
                 </div>
                 Host Actions
               </h3>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="flex items-center text-sm text-muted-foreground">
-                  <Heart className="h-4 w-4 mr-1.5 text-pink-500" />
-                  {listing.interestCount} people interested
-                </div>
-                <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="rounded-lg border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 bg-transparent"
+                >
+                  <Link href={`/host/listings/${listing.id}/edit`}>
+                    <Edit className="h-4 w-4 mr-1.5" />
+                    Edit Listing
+                  </Link>
+                </Button>
+                {listing.status === "OPEN" && (
                   <Button
                     variant="outline"
                     size="sm"
-                    asChild
-                    className="rounded-lg border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 bg-transparent"
+                    onClick={handleCloseListing}
+                    className="rounded-lg border-red-200 hover:bg-red-50 hover:border-red-300 hover:text-red-600 bg-transparent"
                   >
-                    <Link href={`/host/listings/${listing.id}/edit`}>
-                      <Edit className="h-4 w-4 mr-1.5" />
-                      Edit Listing
-                    </Link>
+                    <XCircle className="h-4 w-4 mr-1.5" />
+                    Close Listing
                   </Button>
-                  {listing.status === "OPEN" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCloseListing}
-                      className="rounded-lg border-red-200 hover:bg-red-50 hover:border-red-300 hover:text-red-600 bg-transparent"
-                    >
-                      <XCircle className="h-4 w-4 mr-1.5" />
-                      Close Listing
-                    </Button>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* Seeker Section */}
           {!isHost && listing.status === "OPEN" && (
             <div className="border-t border-gray-100 pt-6">
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    size="lg"
-                    className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 rounded-xl shadow-sm"
-                  >
-                    <Heart className="h-4 w-4 mr-2" />
-                    Express Interest
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="rounded-2xl">
-                  <DialogHeader>
-                    <DialogTitle className="text-balance">Express Interest in "{listing.title}"</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      Send a message to the host about why you'd be a great roommate. Include information about your
-                      lifestyle, work schedule, and what you're looking for in a living situation.
-                    </p>
-                    <Textarea
-                      placeholder="Hi! I'm interested in your listing. I'm a clean, responsible person who works in tech. I'm quiet during the week but enjoy socializing on weekends. I'm looking for a comfortable place to call home..."
-                      value={interestMessage}
-                      onChange={(e) => setInterestMessage(e.target.value)}
-                      rows={5}
-                      className="rounded-xl border-gray-200 focus-visible:ring-emerald-500 resize-none"
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={handleExpressInterest}
-                        disabled={isLoading}
-                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 rounded-xl"
-                      >
-                        {isLoading ? "Sending..." : "Send Interest"}
-                      </Button>
-                      <DialogTrigger asChild>
+              {existingInterest ? (
+                <Alert className="rounded-xl border-blue-200 bg-blue-50">
+                  <AlertDescription className="text-sm">
+                    You've already expressed interest in this listing.
+                    {existingInterest.status === "PENDING" && " The host is reviewing your request."}
+                    {existingInterest.status === "ACCEPTED" && " Your interest was accepted! Check your matches."}
+                    {existingInterest.status === "REJECTED" &&
+                      ` Your interest was declined${existingInterest.rejectionReason ? `: ${existingInterest.rejectionReason}` : "."}`}
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      size="lg"
+                      disabled={checkingInterest}
+                      className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 rounded-xl shadow-sm"
+                    >
+                      <Heart className="h-4 w-4 mr-2" />
+                      {checkingInterest ? "Checking..." : "Express Interest"}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="rounded-2xl">
+                    <DialogHeader>
+                      <DialogTitle className="text-balance">Express Interest in "{listing.title}"</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <Textarea
+                        placeholder="Say hello and share a bit about your lifestyle/work schedule…"
+                        value={interestMessage}
+                        onChange={(e) => setInterestMessage(e.target.value)}
+                        rows={5}
+                        className="rounded-xl border-gray-200 focus-visible:ring-emerald-500 resize-none"
+                      />
+                      <div className="flex gap-2">
                         <Button
-                          variant="outline"
-                          className="rounded-xl border-gray-200 hover:bg-gray-50 bg-transparent"
+                          onClick={handleExpressInterest}
+                          disabled={isSending}
+                          className="flex-1 bg-emerald-500 hover:bg-emerald-600 rounded-xl"
                         >
-                          Cancel
+                          {isSending ? "Sending..." : "Send Interest"}
                         </Button>
-                      </DialogTrigger>
+                        <DialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="rounded-xl border-gray-200 hover:bg-gray-50 bg-transparent"
+                          >
+                            Cancel
+                          </Button>
+                        </DialogTrigger>
+                      </div>
                     </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </div>
+          )}
+
+          {isHost && (
+            <div className="border-t border-gray-100 pt-6">
+              <Alert className="rounded-xl border-gray-200 bg-white">
+                <AlertDescription className="text-sm">
+                  This is your listing. You cannot express interest in your own room.
+                </AlertDescription>
+              </Alert>
             </div>
           )}
 
@@ -273,104 +412,6 @@ export function ListingDetail({ listingId }: ListingDetailProps) {
           )}
         </CardContent>
       </Card>
-
-      {/* Related Listings */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4 text-balance">Similar Listings</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {relatedListings.map((related) => (
-            <Card key={related.id} className="rounded-xl border-0 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-5">
-                <h3 className="font-semibold mb-2 text-sm">{related.title}</h3>
-                <div className="flex items-center text-sm text-muted-foreground mb-3">
-                  <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
-                  {related.location}
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-emerald-600">${related.pricePerMonth}/month</div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    asChild
-                    className="rounded-lg border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 bg-transparent"
-                  >
-                    <Link href={`/listing/${related.id}`}>View</Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
     </div>
   )
 }
-
-// Mock data - in real app this would come from API
-const mockListings = [
-  {
-    id: "1",
-    title: "Cozy Downtown Apartment",
-    location: "Downtown Seattle",
-    pricePerMonth: 1200,
-    status: "OPEN" as const,
-    rules: { noSmoking: true, noPet: false },
-    availableFrom: "2024-02-01",
-    description:
-      "Beautiful 2BR apartment in the heart of downtown with great city views. The room comes fully furnished with a comfortable bed, desk, and closet space. You'll have access to a shared kitchen, living room, and bathroom. The building has a gym, rooftop terrace, and is walking distance to public transportation.",
-    hostId: "host1",
-    createdAt: "2024-01-10",
-    interestCount: 5,
-  },
-  {
-    id: "2",
-    title: "Quiet Suburban Room",
-    location: "Bellevue",
-    pricePerMonth: 800,
-    status: "OPEN" as const,
-    rules: { noSmoking: true, noPet: true },
-    availableFrom: "2024-01-15",
-    description:
-      "Peaceful room in a quiet neighborhood, perfect for students or young professionals. The house has a large backyard, modern kitchen, and friendly atmosphere.",
-    hostId: "host2",
-    createdAt: "2024-01-05",
-    interestCount: 3,
-  },
-  {
-    id: "3",
-    title: "Modern Loft Space",
-    location: "Capitol Hill",
-    pricePerMonth: 1500,
-    status: "CLOSED" as const,
-    rules: { noSmoking: false, noPet: false },
-    availableFrom: "2024-03-01",
-    description: "Trendy loft in vibrant Capitol Hill area with exposed brick walls and high ceilings.",
-    hostId: "host3",
-    createdAt: "2024-01-08",
-    interestCount: 8,
-  },
-]
-
-const relatedListings = [
-  {
-    id: "4",
-    title: "Studio Near University",
-    location: "University District",
-    pricePerMonth: 900,
-    status: "OPEN" as const,
-  },
-  {
-    id: "5",
-    title: "Shared House in Fremont",
-    location: "Fremont",
-    pricePerMonth: 1000,
-    status: "OPEN" as const,
-  },
-  {
-    id: "6",
-    title: "Luxury Condo Room",
-    location: "Belltown",
-    pricePerMonth: 1800,
-    status: "OPEN" as const,
-  },
-]

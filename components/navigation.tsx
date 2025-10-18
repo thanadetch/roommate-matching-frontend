@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation" // Added useRouter import for logout redirect
+import { usePathname, useRouter } from "next/navigation" 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -13,6 +13,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Bell, Home, Heart, User, Settings, LogOut } from "lucide-react"
+import { tokenStorage } from "@/lib/api-client"
+import { useNotificationCount } from "@/lib/hooks/use-notifications"
 
 const navigationItems = [
   { href: "/", label: "Browse", icon: Home },
@@ -23,10 +25,12 @@ const navigationItems = [
 
 export function Navigation() {
   const pathname = usePathname()
-  const router = useRouter() // Added router for logout functionality
+  const router = useRouter()
+  const { data: countData } = useNotificationCount()
+  const unreadCount = (countData as { unread: number } | undefined)?.unread || 0
 
   const handleSignOut = () => {
-    // Clear any authentication state/tokens here if needed
+    tokenStorage.clear()
     router.push("/login")
   }
 
@@ -60,24 +64,27 @@ export function Navigation() {
           <Button variant="ghost" size="sm" asChild>
             <Link href="/notifications" className="relative">
               <Bell className="h-4 w-4" />
-              <Badge
-                variant="destructive"
-                className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
-              >
-                3
-              </Badge>
+              {unreadCount > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Badge>
+              )}
             </Link>
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+              <button type="button" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
                   <AvatarImage src="/diverse-user-avatars.png" alt="User" />
                   <AvatarFallback>JD</AvatarFallback>
                 </Avatar>
-              </Button>
+              </button>
             </DropdownMenuTrigger>
+            
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuItem asChild>
                 <Link href="/profile">

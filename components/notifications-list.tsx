@@ -1,115 +1,138 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Bell, Heart, Users, Check, Eye, Trash2 } from "lucide-react"
+import { Bell, Heart, Users, Check, Eye, Trash2, Loader2, MessageSquare, Star, Clock } from "lucide-react"
+import { decodeToken, getToken } from "@/lib/api-client"
+import { 
+  useNotifications, 
+  useMarkNotificationRead, 
+  useMarkAllNotificationsRead, 
+  useDeleteNotification 
+} from "@/lib/hooks/use-notifications"
+
+type NotificationType =
+  | "INTEREST_REQUEST"
+  | "MATCH_FOUND"
+  | "MESSAGE"
+  | "REVIEW"
+  | "REMINDER"
+
+type NotificationStatus = "UNREAD" | "READ"
 
 interface Notification {
   id: string
-  type: "INTEREST" | "MATCH"
-  payload: any
-  isRead: boolean
+  userId: string
+  type: NotificationType
+  status: NotificationStatus
+  title: string
+  message: string
   createdAt: string
+  updatedAt: string
 }
 
-const mockNotifications: Notification[] = [
-  {
-    id: "notif1",
-    type: "INTEREST",
-    payload: {
-      seekerName: "Alex Johnson",
-      listingTitle: "Cozy Downtown Apartment",
-      listingId: "1",
-    },
-    isRead: false,
-    createdAt: "2024-01-16T10:30:00Z",
-  },
-  {
-    id: "notif2",
-    type: "MATCH",
-    payload: {
-      counterpartyName: "Emma Wilson",
-      listingTitle: "Modern Loft Space",
-      listingId: "3",
-      matchId: "match2",
-    },
-    isRead: false,
-    createdAt: "2024-01-15T14:20:00Z",
-  },
-  {
-    id: "notif3",
-    type: "INTEREST",
-    payload: {
-      seekerName: "Sarah Chen",
-      listingTitle: "Cozy Downtown Apartment",
-      listingId: "1",
-    },
-    isRead: true,
-    createdAt: "2024-01-14T15:45:00Z",
-  },
-]
-
-const getNotificationContent = (notification: Notification) => {
-  switch (notification.type) {
-    case "INTEREST":
-      return {
-        title: "New Interest Request",
-        description: `${notification.payload.seekerName} is interested in "${notification.payload.listingTitle}"`,
-        action: (
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/matching/interests">Review Interest</Link>
-          </Button>
-        ),
-      }
-    case "MATCH":
-      return {
-        title: "New Match!",
-        description: `You matched with ${notification.payload.counterpartyName} for "${notification.payload.listingTitle}"`,
-        action: (
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/matching/matches">View Match</Link>
-          </Button>
-        ),
-      }
+const getNotificationIcon = (type: NotificationType) => {
+  switch (type) {
+    case "INTEREST_REQUEST":
+      return <Heart className="h-5 w-5 text-pink-500" />
+    case "MATCH_FOUND":
+      return <Users className="h-5 w-5 text-green-600" />
+    case "MESSAGE":
+      return <MessageSquare className="h-5 w-5 text-blue-600" />
+    case "REVIEW":
+      return <Star className="h-5 w-5 text-yellow-500" />
+    case "REMINDER":
+      return <Clock className="h-5 w-5 text-emerald-600" />
     default:
-      return {
-        title: "Notification",
-        description: "You have a new notification",
-        action: null,
-      }
+      return <Bell className="h-5 w-5 text-slate-600" />
   }
 }
 
-const getNotificationIcon = (type: string) => {
-  switch (type) {
-    case "INTEREST":
-      return <Heart className="h-5 w-5 text-pink-500" />
-    case "MATCH":
-      return <Users className="h-5 w-5 text-green-500" />
+const getQuickAction = (n: Notification) => {
+  switch (n.type) {
+    case "INTEREST_REQUEST":
+      return (
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/matching/interests">Review Interest</Link>
+        </Button>
+      )
+    case "MATCH_FOUND":
+      return (
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/matching/matches">View Match</Link>
+        </Button>
+      )
     default:
-      return <Bell className="h-5 w-5 text-blue-500" />
+      return null
   }
 }
 
 export function NotificationsList() {
-  const [notifications, setNotifications] = useState(mockNotifications)
+  // Get user ID from token
+  const token = getToken()
+  const decoded = token ? decodeToken(token) as any : null
+  const userId = decoded?.userId || decoded?.sub || decoded?.id
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length
+  // Use hooks for data fetching and mutations
+  const { data: notificationsData, isLoading: loading, error } = useNotifications(userId)
+  const markAsReadMutation = useMarkNotificationRead()
+  const markAllAsReadMutation = useMarkAllNotificationsRead()
+  const deleteMutation = useDeleteNotification()
+
+  // Normalize notifications data
+  const notifications: Notification[] = (notificationsData || []).map((r: any) => ({
+    id: r.id,
+    userId: r.userId,
+    type: r.type,
+    status: r.status ?? (r.isRead ? "READ" : "UNREAD"),
+    title: r.title ?? "Notification",
+    message:
+      r.message ??
+      r.payload?.description ??
+      "You have a new notification.",
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt ?? r.createdAt,
+  }))
+
+  const unreadCount = notifications.filter((n) => n.status !== "READ").length
 
   const handleMarkAllAsRead = () => {
-    setNotifications(notifications.map((n) => ({ ...n, isRead: true })))
+    if (userId) {
+      markAllAsReadMutation.mutate(userId)
+    }
   }
 
   const handleMarkAsRead = (id: string) => {
-    setNotifications(notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+    markAsReadMutation.mutate(id)
   }
 
   const handleDeleteNotification = (id: string) => {
-    setNotifications(notifications.filter((n) => n.id !== id))
+    deleteMutation.mutate(id)
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <Alert className="rounded-xl border-red-200 bg-red-50">
+          <AlertDescription className="text-sm text-red-800">
+            {error instanceof Error ? error.message : "Failed to load notifications"}
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
   }
 
   return (
@@ -130,9 +153,14 @@ export function NotificationsList() {
           <Button
             variant="outline"
             onClick={handleMarkAllAsRead}
+            disabled={markAllAsReadMutation.isPending}
             className="rounded-xl border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 bg-transparent h-9"
           >
-            <Check className="h-4 w-4 mr-2" />
+            {markAllAsReadMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4 mr-2" />
+            )}
             Mark All Read
           </Button>
         )}
@@ -152,13 +180,15 @@ export function NotificationsList() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {notifications.map((notification) => {
-            const content = getNotificationContent(notification)
+          {notifications.map((n) => {
+            const action = getQuickAction(n)
+            const isUnread = n.status !== "READ"
+
             return (
               <Card
-                key={notification.id}
+                key={n.id}
                 className={`rounded-xl border transition-all hover:shadow-md ${
-                  !notification.isRead ? "border-emerald-200 bg-emerald-50/50 shadow-sm" : "border-gray-100 bg-white"
+                  isUnread ? "border-emerald-200 bg-emerald-50/50 shadow-sm" : "border-gray-100 bg-white"
                 }`}
               >
                 <CardContent className="p-4">
@@ -166,10 +196,10 @@ export function NotificationsList() {
                     <div className="flex-shrink-0 mt-1">
                       <div
                         className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          notification.type === "INTEREST" ? "bg-pink-100" : "bg-emerald-100"
+                          n.type === "INTEREST_REQUEST" ? "bg-pink-100" : "bg-emerald-100"
                         }`}
                       >
-                        {getNotificationIcon(notification.type)}
+                        {getNotificationIcon(n.type)}
                       </div>
                     </div>
 
@@ -177,30 +207,27 @@ export function NotificationsList() {
                       <div className="flex items-start justify-between gap-4">
                         <div className="space-y-1.5 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold text-sm">{content.title}</h3>
-                            {!notification.isRead && (
+                            <h3 className="font-semibold text-sm">{n.title}</h3>
+                            {isUnread && (
                               <Badge variant="default" className="h-5 text-xs px-2 bg-emerald-500 hover:bg-emerald-600">
                                 New
                               </Badge>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground leading-relaxed">{content.description}</p>
+                          <p className="text-sm text-muted-foreground leading-relaxed">{n.message}</p>
                           <p className="text-xs text-muted-foreground">
-                            {new Date(notification.createdAt).toLocaleDateString()} at{" "}
-                            {new Date(notification.createdAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            {new Date(n.createdAt).toLocaleDateString()} at{" "}
+                            {new Date(n.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </p>
                         </div>
 
                         <div className="flex items-center gap-1.5 flex-shrink-0">
-                          {content.action}
-                          {!notification.isRead ? (
+                          {action}
+                          {isUnread ? (
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleMarkAsRead(notification.id)}
+                              onClick={() => handleMarkAsRead(n.id)}
                               className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-100"
                               title="Mark as read"
                             >
@@ -212,7 +239,7 @@ export function NotificationsList() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleDeleteNotification(notification.id)}
+                            onClick={() => handleDeleteNotification(n.id)}
                             className="h-9 w-9 p-0 rounded-lg text-muted-foreground hover:text-destructive hover:bg-red-50"
                             title="Delete notification"
                           >

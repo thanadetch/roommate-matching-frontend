@@ -6,6 +6,7 @@ import { Space_Grotesk } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
 import { QueryProvider } from "@/lib/query-provider"
+import AuthGuard from "@/components/auth-guard"
 import "./globals.css"
 
 const spaceGrotesk = Space_Grotesk({
@@ -29,7 +30,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable} ${spaceGrotesk.variable}`}>
         <QueryProvider>
-          <Suspense fallback={null}>{children}</Suspense>
+          <Suspense fallback={null}>
+            <AuthGuard>{children}</AuthGuard>
+          </Suspense>
         </QueryProvider>
         <Analytics />
       </body>

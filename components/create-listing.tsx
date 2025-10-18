@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -13,6 +12,8 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ArrowLeft, MapPin, DollarSign, Calendar, Home, Info } from "lucide-react"
+import { ApiError, jwt, roomsApi, tokenStorage } from "@/lib/api-client"
+
 
 interface ListingFormData {
   title: string
@@ -20,15 +21,16 @@ interface ListingFormData {
   pricePerMonth: string
   availableFrom: string
   description: string
-  rules: {
-    noSmoking: boolean
-    noPet: boolean
-  }
+  noSmoking: boolean
+  noPets: boolean
+  quiet: boolean
+  nightOwl: boolean
 }
 
 export function CreateListing() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
   const [errors, setErrors] = useState<Partial<ListingFormData>>({})
   const [formData, setFormData] = useState<ListingFormData>({
     title: "",
@@ -36,10 +38,10 @@ export function CreateListing() {
     pricePerMonth: "",
     availableFrom: "",
     description: "",
-    rules: {
-      noSmoking: false,
-      noPet: false,
-    },
+    noSmoking: false,
+    noPets: false,
+    quiet: false,
+    nightOwl: false,
   })
 
   const validateForm = (): boolean => {
@@ -69,17 +71,35 @@ export function CreateListing() {
     }
 
     setIsLoading(true)
+    setServerError(null)
 
     try {
-      // Mock API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const token = tokenStorage.get()
+      const payload = token ? jwt.decode(token) : null
+      const hostId = payload?.sub as string
+      if (!hostId) {
+        throw new ApiError("User not authenticated", 401)
+      }
+      const iso = formData.availableFrom
+      ? `${formData.availableFrom}T00:00:00.000Z`
+      : undefined;
 
-      console.log("Creating listing:", formData)
+      const created = await roomsApi.create({
+        title: formData.title.trim(),
+        location: formData.location.trim(),
+        pricePerMonth: Number(formData.pricePerMonth),
+        availableFrom: iso,
+        description: formData.description || undefined,
+        noSmoking: formData.noSmoking,
+        noPets: formData.noPets,
+        quiet: formData.quiet,
+        nightOwl: formData.nightOwl,
+        hostId: hostId as string, 
+      })
 
-      // In real app, this would create the listing via API
       router.push("/host/listings")
-    } catch (error) {
-      console.error("Error creating listing:", error)
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : "Failed to create listing")
     } finally {
       setIsLoading(false)
     }
@@ -93,10 +113,10 @@ export function CreateListing() {
     }
   }
 
-  const handleRuleChange = (rule: keyof ListingFormData["rules"], checked: boolean) => {
+  const handleRuleChange = (rule: keyof ListingFormData, checked: boolean) => {
     setFormData((prev) => ({
       ...prev,
-      rules: { ...prev.rules, [rule]: checked },
+      [rule]: checked,
     }))
   }
 
@@ -112,6 +132,12 @@ export function CreateListing() {
         <h1 className="text-2xl font-bold text-balance mb-1">Create New Listing</h1>
         <p className="text-muted-foreground text-sm">Fill out the details to list your room for potential roommates.</p>
       </div>
+
+      {serverError && (
+        <Alert className="mb-4 rounded-xl border-red-200 bg-red-50">
+          <AlertDescription className="text-red-700 text-sm">{serverError}</AlertDescription>
+        </Alert>
+      )}
 
       <Card className="rounded-2xl border-0 shadow-sm">
         <CardHeader className="border-b border-gray-100 p-4">
@@ -157,7 +183,7 @@ export function CreateListing() {
               {errors.location && <p className="text-sm text-red-500">{errors.location}</p>}
             </div>
 
-            {/* Price and Available From */}
+            {/* Price + AvailableFrom */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="price" className="text-sm font-medium">
@@ -194,7 +220,7 @@ export function CreateListing() {
               </div>
             </div>
 
-            {/* House Rules */}
+            {/* Rules */}
             <div className="space-y-3">
               <Label className="text-sm font-medium">House Rules</Label>
               <div className="space-y-2">
@@ -207,22 +233,50 @@ export function CreateListing() {
                   </div>
                   <Switch
                     id="noSmoking"
-                    checked={formData.rules.noSmoking}
+                    checked={formData.noSmoking}
                     onCheckedChange={(checked) => handleRuleChange("noSmoking", checked)}
                     className="data-[state=checked]:bg-emerald-500"
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
                   <div className="space-y-0.5">
-                    <Label htmlFor="noPet" className="text-sm font-medium cursor-pointer">
+                    <Label htmlFor="noPets" className="text-sm font-medium cursor-pointer">
                       No Pets
                     </Label>
                     <p className="text-xs text-muted-foreground">Pets are not allowed in the property</p>
                   </div>
                   <Switch
-                    id="noPet"
-                    checked={formData.rules.noPet}
-                    onCheckedChange={(checked) => handleRuleChange("noPet", checked)}
+                    id="noPets"
+                    checked={formData.noPets}
+                    onCheckedChange={(checked) => handleRuleChange("noPets", checked)}
+                    className="data-[state=checked]:bg-emerald-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="quiet" className="text-sm font-medium cursor-pointer">
+                      Quiet
+                    </Label>
+                    <p className="text-xs text-muted-foreground">The property is quiet and peaceful</p>
+                  </div>
+                  <Switch
+                    id="quiet"
+                    checked={formData.quiet}
+                    onCheckedChange={(checked) => handleRuleChange("quiet", checked)}
+                    className="data-[state=checked]:bg-emerald-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="nightOwl" className="text-sm font-medium cursor-pointer">
+                      Night Owl
+                    </Label>
+                    <p className="text-xs text-muted-foreground">The property is a night owl and stays up late</p>
+                  </div>
+                  <Switch
+                    id="nightOwl"
+                    checked={formData.nightOwl}
+                    onCheckedChange={(checked) => handleRuleChange("nightOwl", checked)}
                     className="data-[state=checked]:bg-emerald-500"
                   />
                 </div>
@@ -242,26 +296,14 @@ export function CreateListing() {
                 rows={4}
                 className="rounded-xl border-gray-200 focus-visible:ring-emerald-500 resize-none text-sm"
               />
-              <p className="text-xs text-muted-foreground">
-                Include details about the room, shared spaces, neighborhood, and your ideal roommate.
-              </p>
             </div>
 
-            {/* Submit Buttons */}
+            {/* Submit */}
             <div className="flex gap-3 pt-2">
-              <Button
-                type="submit"
-                disabled={isLoading}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-600 rounded-xl shadow-sm h-9"
-              >
+              <Button type="submit" disabled={isLoading} className="flex-1 bg-emerald-500 hover:bg-emerald-600 rounded-xl shadow-sm h-9">
                 {isLoading ? "Creating..." : "Create Listing"}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                asChild
-                className="rounded-xl border-gray-200 hover:bg-gray-50 bg-transparent h-9"
-              >
+              <Button type="button" variant="outline" asChild className="rounded-xl border-gray-200 hover:bg-gray-50 bg-transparent h-9">
                 <Link href="/host/listings">Cancel</Link>
               </Button>
             </div>
@@ -272,8 +314,7 @@ export function CreateListing() {
       <Alert className="mt-4 rounded-xl border-emerald-200 bg-emerald-50/50">
         <Info className="h-4 w-4 text-emerald-600" />
         <AlertDescription className="text-sm">
-          Your listing will be visible to potential roommates immediately after creation. You can edit or close it
-          anytime from your listings page.
+          Your listing will be visible to potential roommates immediately after creation.
         </AlertDescription>
       </Alert>
     </div>
