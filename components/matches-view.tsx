@@ -126,23 +126,27 @@ export function MatchesView() {
     ({ match, type }: { match: any; type: "host" | "seeker" }) => {
       const isHost = type === "host"
       const counterparty = isHost
-      ? { name: match.seeker.firstName + " " + match.seeker.lastName, contact: match.seeker }
-      : { name: match.host.firstName + " " + match.host.lastName, contact: match.host }
-
+        ? { name: `${match.seeker?.firstName || ""} ${match.seeker?.lastName || ""}`, contact: match.seeker }
+        : { name: `${match.host?.firstName || ""} ${match.host?.lastName || ""}`, contact: match.host }
+  
       const room = match.room
+      const canViewContact = match.status === "ACCEPTED"
+  
+      // ---- review states from outer stores ----
       const revieweeId = isHost ? match.seekerId : match.hostId
       const existingReview = reviews[revieweeId]
       const isDialogOpen = dialogStates[match.id] || false
-      const canViewContact = match.status === "ACCEPTED"
-      const isSaving = savingReview[match.id] || false
-
+      const isSaving = !!savingReview[match.id]
+  
+      // ---- local form (rating/comment) ----
       const [localForm, setLocalForm] = useState<{ rating: number; comment: string }>(
         formStates[match.id] || getInitialFormState(match.id),
       )
-
-      const handleLocalRating = (star: number) => setLocalForm((prev) => ({ ...prev, rating: star }))
-      const handleLocalComment = (value: string) => setLocalForm((prev) => ({ ...prev, comment: value }))
-
+      const handleLocalRating = (star: number) =>
+        setLocalForm((prev) => ({ ...prev, rating: star }))
+      const handleLocalComment = (value: string) =>
+        setLocalForm((prev) => ({ ...prev, comment: value }))
+  
       return (
         <Card className="rounded-xl border-0 shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="border-b border-gray-100 pb-3">
@@ -151,226 +155,193 @@ export function MatchesView() {
                 <CardTitle className="text-base text-balance">{room?.title || "Room"}</CardTitle>
                 <div className="flex items-center text-xs text-muted-foreground">
                   <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
-                {room?.location || "Location"}
+                  {room?.location || "Location not specified"}
                 </div>
               </div>
+  
               <Badge
                 variant="default"
                 className={`rounded-lg flex-shrink-0 text-xs px-2 py-0.5 ${
-                  type === "host" ? "bg-emerald-500 hover:bg-emerald-600" : "bg-pink-500 hover:bg-pink-600"
+                  match.status === "ACCEPTED"
+                    ? "bg-emerald-500 hover:bg-emerald-600"
+                    : "bg-gray-400 hover:bg-gray-500"
                 }`}
               >
-                Matched
+                {match.status}
               </Badge>
             </div>
           </CardHeader>
-
-          <CardContent className="p-4 space-y-3">
-            {/* Price & Matched Date */}
+  
+          <CardContent className="p-4 space-y-4">
+            {/* 💰 Price + Matched date */}
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className={`flex items-center text-base font-semibold ${type === "host" ? "text-emerald-600" : "text-pink-600"}`}>
+              <div className="flex items-center text-base font-semibold text-emerald-600">
                 <DollarSign className="h-4 w-4 mr-0.5" />
-              {room?.pricePerMonth ?? "N/A"}/month
+                {room?.pricePerMonth ? `${room.pricePerMonth} THB/month` : "N/A"}
               </div>
-            {match.createdAt && (
+              {match.createdAt && (
                 <div className="flex items-center text-xs text-muted-foreground">
                   <Calendar className="h-3 w-3 mr-1" />
                   Matched {new Date(match.createdAt).toLocaleDateString()}
                 </div>
               )}
             </div>
-
-            {/* Room Details */}
-            {room && (
-              <div className="border-t border-gray-100 pt-3 space-y-2">
+  
+            {/* 🏠 Room details */}
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              {room?.availableFrom && (
                 <div className="text-xs text-muted-foreground">
                   <strong>Available from:</strong>{" "}
-                  {room.availableFrom ? new Date(room.availableFrom).toLocaleDateString() : "N/A"}
+                  {new Date(room.availableFrom).toLocaleDateString()}
                 </div>
-                {room.description && <div className="text-xs text-muted-foreground line-clamp-2">{room.description}</div>}
-                {room.rules && (
-                  <div className="flex gap-1 flex-wrap">
-                    {room.rules.noSmoking && <Badge variant="outline" className="text-xs">No Smoking</Badge>}
-                    {room.rules.noPet && <Badge variant="outline" className="text-xs">No Pets</Badge>}
-                  </div>
-                )}
+              )}
+              {room?.description && (
+                <div className="text-xs text-muted-foreground line-clamp-2">{room.description}</div>
+              )}
+              <div className="flex gap-1 flex-wrap">
+                {room?.noSmoking && <Badge variant="outline" className="text-xs">🚭 No Smoking</Badge>}
+                {room?.noPets &&    <Badge variant="outline" className="text-xs">🐾 No Pets</Badge>}
+                {room?.quiet &&     <Badge variant="outline" className="text-xs">🤫 Quiet Place</Badge>}
+                {room?.nightOwl &&  <Badge variant="outline" className="text-xs">🌙 Night Owl</Badge>}
               </div>
-            )}
-
-            {/* Counterparty Info & Review */}
-            <div className="border-t border-gray-100 pt-3">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2.5">
-                  <Avatar className="h-9 w-9 ring-2 ring-emerald-100">
-                    <AvatarImage src="/diverse-user-avatars.png" alt={counterparty.name} />
-                    <AvatarFallback className="bg-emerald-100 text-emerald-600 text-xs">
-                      {counterparty.name?.split(" ").map((n: string) => n[0]).join("")}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="font-medium text-xs">{counterparty.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {isHost ? "Your matched roommate" : "Your host"}
-                    </div>
+            </div>
+  
+            {/* 👤 Counterparty */}
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              <div className="flex items-center gap-2.5">
+                <Avatar className="h-9 w-9 ring-2 ring-emerald-100">
+                  <AvatarImage src="/diverse-user-avatars.png" alt={counterparty.name} />
+                  <AvatarFallback className="bg-emerald-100 text-emerald-600 text-xs">
+                    {counterparty.name?.split(" ").map((n: string) => n[0]).join("")}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <div className="font-medium text-xs">{counterparty.name || "Unnamed"}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {isHost ? "Your matched seeker" : "Your matched host"}
                   </div>
                 </div>
               </div>
-
-              {existingReview && (
-                <div className="mb-3 p-3 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-100">
+  
+              <div className="text-xs text-muted-foreground">
+                <strong>Email:</strong> {counterparty.contact?.email || "-"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <strong>Message:</strong> {match.message || "-"}
+              </div>
+            </div>
+  
+            {/* ⭐ Existing review (if any) */}
+            {existingReview && (
+              <div className="border-t border-gray-100 pt-3">
+                <div className="p-3 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-100">
                   <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium">My Review:</span>
                       <div className="flex">
                         {[1,2,3,4,5].map(star => (
-                          <Star key={star} className={`h-3 w-3 ${star <= existingReview.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} />
+                          <Star
+                            key={star}
+                            className={`h-3 w-3 ${
+                              star <= (existingReview.rating ?? 0)
+                                ? "fill-yellow-400 text-yellow-400"
+                                : "text-gray-300"
+                            }`}
+                          />
                         ))}
                       </div>
                     </div>
-                    <span className="text-xs text-muted-foreground">{new Date(existingReview.createdAt).toLocaleDateString()}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(existingReview.createdAt).toLocaleDateString()}
+                    </span>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{existingReview.comment}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {existingReview.comment}
+                  </p>
                 </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex gap-2">
-                {/* View Contact */}
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!canViewContact}
-                      className="flex-1 rounded-lg border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 bg-transparent text-xs h-8 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Eye className="h-3.5 w-3.5 mr-1.5" />
-                      View Contact Info
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="rounded-2xl">
-                    <DialogHeader>
-                      <DialogTitle className="text-balance">Contact Information</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      {canViewContact ? (
-                        <>
-                          <Alert className="rounded-xl border-emerald-200 bg-emerald-50/50">
-                            <Info className="h-4 w-4 text-emerald-600" />
-                            <AlertDescription className="text-sm">
-                              Contact information is available for accepted matches.
-                            </AlertDescription>
-                          </Alert>
-
-                          <div className="space-y-3">
-                      {counterparty.contact.contactLine && (
-                              <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-blue-50 to-white rounded-xl border border-blue-100">
-                                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                                  <MessageCircle className="h-5 w-5 text-blue-600" />
-                                </div>
-                                <div>
-                                  <div className="font-medium text-sm">Line</div>
-                            <div className="text-sm text-muted-foreground">{counterparty.contact.contactLine}</div>
-                                </div>
-                              </div>
-                            )}
-                      {counterparty.contact.contactEmail && (
-                              <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-100">
-                                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-                                  <Mail className="h-5 w-5 text-purple-600" />
-                                </div>
-                                <div>
-                                  <div className="font-medium text-sm">Email</div>
-                            <div className="text-sm text-muted-foreground">{counterparty.contact.contactEmail}</div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        <Alert className="rounded-xl border-yellow-200 bg-yellow-50/50">
-                          <Info className="h-4 w-4 text-yellow-600" />
-                          <AlertDescription className="text-sm">
-                            Contact information is only visible after the interest is accepted by both parties.
-                          </AlertDescription>
-                        </Alert>
-                      )}
-
-                      {match.matchedAt && (
-                        <div className="text-xs text-muted-foreground">
-                          Matched on {new Date(match.matchedAt).toLocaleDateString()} at{" "}
-                          {new Date(match.matchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </div>
-                      )}
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                {/* Write/Edit Review */}
-                <Dialog open={isDialogOpen} onOpenChange={(open) => (open ? openDialog(match.id) : closeDialog(match.id))}>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="rounded-lg border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 bg-transparent text-xs h-8"
-                    >
-                      {existingReview ? <Edit className="h-3.5 w-3.5 mr-1.5" /> : <Star className="h-3.5 w-3.5 mr-1.5" />}
-                      {existingReview ? "Edit Review" : "Write Review"}
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="rounded-2xl">
-                    <DialogHeader>
-                      <DialogTitle className="text-balance">
-                        {existingReview ? "Edit Review" : "Write Review"} for {counterparty.name}
-                      </DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <Alert className="rounded-xl border-emerald-200 bg-emerald-50/50">
-                        <Info className="h-4 w-4 text-emerald-600" />
-                        <AlertDescription className="text-sm">
-                          This review is private and only visible to you.
-                        </AlertDescription>
-                      </Alert>
-
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">Rating</Label>
-                        <div className="flex gap-1">
-                          {[1,2,3,4,5].map(star => (
-                            <button key={star} type="button" onClick={() => handleLocalRating(star)} className="p-1 hover:scale-110 transition-transform">
-                              <Star className={`h-6 w-6 ${star <= (localForm.rating||0) ? "fill-yellow-400 text-yellow-400" : "text-gray-300 hover:text-yellow-200"}`} />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor={`comment-${match.id}`} className="text-sm font-medium">Your Experience</Label>
-                        <Textarea
-                          id={`comment-${match.id}`}
-                          placeholder="Share your experience..."
-                          value={localForm.comment || ""}
-                          onChange={(e) => handleLocalComment(e.target.value)}
-                          rows={4}
-                          className="rounded-xl border-gray-200 focus-visible:ring-emerald-500 resize-none"
-                        />
-                      </div>
-
-                      <div className="flex gap-2 justify-end">
-                        <Button variant="outline" onClick={() => closeDialog(match.id)} className="rounded-xl border-gray-200 hover:bg-gray-50 bg-transparent">
-                          Cancel
-                        </Button>
-                        <Button 
-                          onClick={() => handleReviewSubmit(match.id, localForm, revieweeId)} 
-                          disabled={isSaving || localForm.rating === 0}
-                          className="bg-emerald-500 hover:bg-emerald-600 rounded-xl disabled:opacity-50"
-                        >
-                          {isSaving ? "Saving..." : (existingReview ? "Update Review" : "Save Review")}
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
               </div>
+            )}
+  
+            {/* 🔘 Actions */}
+            <div className="border-t border-gray-100 pt-3 flex gap-2">
+              {/* Write/Edit review */}
+              <Dialog open={isDialogOpen} onOpenChange={(open) => (open ? openDialog(match.id) : closeDialog(match.id))}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 rounded-lg border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 bg-transparent text-xs h-8 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {existingReview ? <Edit className="h-3.5 w-3.5 mr-1.5" /> : <Star className="h-3.5 w-3.5 mr-1.5" />}
+                    {existingReview ? "Edit Review" : "Write Review"}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="rounded-2xl">
+                  <DialogHeader>
+                    <DialogTitle className="text-balance">
+                      {existingReview ? "Edit Review" : "Write Review"} for {counterparty.name}
+                    </DialogTitle>
+                  </DialogHeader>
+  
+                  <div className="space-y-4">
+                    <Alert className="rounded-xl border-emerald-200 bg-emerald-50/50">
+                      <Info className="h-4 w-4 text-emerald-600" />
+                      <AlertDescription className="text-sm">
+                        This review is private and only visible to you.
+                      </AlertDescription>
+                    </Alert>
+  
+                    {/* rating */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Rating</Label>
+                      <div className="flex gap-1">
+                        {[1,2,3,4,5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => handleLocalRating(star)}
+                            className="p-1 hover:scale-110 transition-transform"
+                            aria-label={`rate ${star}`}
+                          >
+                            <Star
+                              className={`h-6 w-6 ${
+                                star <= (localForm.rating || 0)
+                                  ? "fill-yellow-400 text-yellow-400"
+                                  : "text-gray-300 hover:text-yellow-300"
+                              }`}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+  
+                    {/* comment */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Your Experience</Label>
+                      <Textarea
+                        placeholder="Share your experience..."
+                        value={localForm.comment || ""}
+                        onChange={(e) => handleLocalComment(e.target.value)}
+                        rows={4}
+                        className="rounded-xl border-gray-200 focus-visible:ring-emerald-500 resize-none"
+                      />
+                    </div>
+  
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => closeDialog(match.id)} className="rounded-xl">
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => handleReviewSubmit(match.id, localForm, revieweeId)}
+                        disabled={isSaving || localForm.rating === 0}
+                        className="bg-emerald-500 hover:bg-emerald-600 rounded-xl disabled:opacity-50"
+                      >
+                        {isSaving ? "Saving..." : existingReview ? "Update Review" : "Save Review"}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </CardContent>
         </Card>
@@ -378,6 +349,7 @@ export function MatchesView() {
     },
     (prev, next) => prev.match.id === next.match.id && prev.type === next.type,
   )
+
 
 
   // ----------------------- Render -----------------------

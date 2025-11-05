@@ -25,6 +25,34 @@ interface Review {
   }
 }
 
+interface MatchOption {
+  userId: string
+  name: string
+  revieweeProfile?: {
+    firstName?: string
+    lastName?: string
+  }
+}
+
+async function fetchMyReviewsSafe(sub: string): Promise<Review[]> {
+  try {
+    const res = await reviewsApi.getAll({ reviewerId: sub })
+    // รองรับทั้ง {results: []} / {data: []} / [] โดยไม่อ้าง property ที่ไม่มี
+    const anyRes: any = res
+    const arr =
+      Array.isArray(anyRes?.results) ? anyRes.results :
+      Array.isArray(anyRes?.data)    ? anyRes.data    :
+      Array.isArray(anyRes)          ? anyRes         : []
+    return arr as Review[]
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 204)) {
+      // ไม่มีรีวิว → คืนลิสต์ว่าง
+      return []
+    }
+    throw e
+  }
+}
+
 export function ReviewsManagement() {
   const [mounted, setMounted] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
@@ -48,7 +76,7 @@ export function ReviewsManagement() {
   const [editForm, setEditForm] = useState<{ rating: number; comment: string }>({ rating: 0, comment: "" })
 
   // match options
-  const [matchOptions, setMatchOptions] = useState<{ userId: string; name: string }[]>([])
+  const [matchOptions, setMatchOptions] = useState<MatchOption[]>([])
 
   useEffect(() => {
     setMounted(true)
@@ -57,38 +85,89 @@ export function ReviewsManagement() {
   useEffect(() => {
     let alive = true
     async function bootstrap() {
+      setError(null);                 // ← เคลียร์แบนเนอร์ก่อนเริ่ม
+      setLoading(true);
+  
       try {
         const t = tokenStorage.get()
         const payload = t ? jwt.decode(t) : null
         const sub = payload?.sub || null
         if (alive) setUserId(sub)
-
-        if (!sub) {
-          if (alive) {
-            setLoading(false)
-            setError("Not authenticated")
-          }
-          return
-        }
-
-        // โหลดรีวิวของเรา
-        const res = await reviewsApi.getAll({ reviewerId: sub })
-        const myReviews = res.results || []
+        if (!sub) { if (alive) { setLoading(false); setError("Not authenticated") } ; return }
+  
+        // --- รีวิว: รองรับ 404/204 เป็นลิสต์ว่าง ---
+        const myReviews: Review[] = await fetchMyReviewsSafe(sub)
         if (alive) {
           setReviews(myReviews)
           setReviewedSet(new Set(myReviews.map((r) => r.revieweeId)))
         }
-
-        // โหลด matches เอามาสร้างรายชื่อ counterparties
-        const matches = await roommateMatchingApi.getAllMatches(sub)
-        const asHost = (matches?.asHost ?? []).map((m: any) => ({ userId: m.seekerId, name: m.seekerName }))
-        const asSeeker = (matches?.asSeeker ?? []).map((m: any) => ({ userId: m.hostId, name: m.hostName }))
-        const all = [...asHost, ...asSeeker]
-
-        // unique by userId
-        const uniqMap = new Map<string, { userId: string; name: string }>()
-        for (const u of all) if (!uniqMap.has(u.userId)) uniqMap.set(u.userId, u)
-        if (alive) setMatchOptions(Array.from(uniqMap.values()))
+  
+        // --- โหลด matches: ถ้าพังให้ non-fatal (ไม่ตั้ง error แดง) ---
+        try {
+          const matches = await roommateMatchingApi.getAllMatches(sub)
+        
+          const mapName = (name?: string, person?: any) => {
+            if (name && name.trim()) return name
+            const fn = person?.firstName ?? person?.profile?.firstName ?? ""
+            const ln = person?.lastName  ?? person?.profile?.lastName  ?? ""
+            return `${fn} ${ln}`.trim() || "Unknown user"
+          }
+        
+          const asHost = (matches?.asHost ?? []).map((m: any) => {
+            const seeker = m?.seeker
+            const userId =
+              m?.seekerId ??
+              seeker?.id ??
+              seeker?.userId ??
+              seeker?.uid ?? // เผื่อกรณีตั้งชื่อต่าง
+              null
+            return {
+              userId,
+              name: mapName(m?.seekerName, seeker),
+              revieweeProfile: {
+                firstName: seeker?.firstName ?? seeker?.profile?.firstName ?? "",
+                lastName:  seeker?.lastName  ?? seeker?.profile?.lastName  ?? "",
+              },
+            } as MatchOption
+          })
+        
+          const asSeeker = (matches?.asSeeker ?? []).map((m: any) => {
+            const host = m?.host
+            const userId =
+              m?.hostId ??
+              host?.id ??
+              host?.userId ??
+              host?.uid ??
+              null
+            return {
+              userId,
+              name: mapName(m?.hostName, host),
+              revieweeProfile: {
+                firstName: host?.firstName ?? host?.profile?.firstName ?? "",
+                lastName:  host?.lastName  ?? host?.profile?.lastName  ?? "",
+              },
+            } as MatchOption
+          })
+        
+          // รวม + unique + กรอง userId ที่ว่าง
+          const all = [...asHost, ...asSeeker].filter(o => !!o.userId)
+          const uniqMap = new Map<string, MatchOption>()
+          for (const o of all) if (!uniqMap.has(o.userId)) uniqMap.set(o.userId, o)
+        
+          // ถ้ามี review เดิม เติมชื่อจากรีวิว
+          const optionsWithProfile = Array.from(uniqMap.values()).map(opt => {
+            const r = myReviews.find(rv => rv.revieweeId === opt.userId)
+            return r?.revieweeProfile
+              ? { ...opt, revieweeProfile: r.revieweeProfile }
+              : opt
+          })
+        
+          if (alive) setMatchOptions(optionsWithProfile)
+        } catch (e) {
+          console.warn("[reviews] getAllMatches failed (non-fatal):", e)
+          // ถ้าอยากเห็นแบนเนอร์เฉพาะกรณีนี้ ให้ปลดคอมเมนต์บรรทัดล่าง
+          // if (alive) setError("Failed to load matches")
+        }
       } catch (e) {
         if (alive) setError(e instanceof ApiError ? e.message : "Failed to load reviews")
       } finally {
@@ -96,9 +175,7 @@ export function ReviewsManagement() {
       }
     }
     bootstrap()
-    return () => {
-      alive = false
-    }
+    return () => { alive = false }
   }, [])
 
   const StarRating = ({ rating, onRatingChange, readonly = false }: any) => (
@@ -129,12 +206,17 @@ export function ReviewsManagement() {
     setSaving(true)
     setError(null)
     try {
-      // backend มี upsert logic: ถ้าเคยรีวิวแล้วจะ update ให้เอง
       const createdOrUpdated = await reviewsApi.create({
         revieweeId: createForm.revieweeId,
         rating: createForm.rating,
         comment: createForm.comment || undefined,
       })
+
+      // เติม revieweeProfile จาก matchOptions
+      const match = matchOptions.find((m) => m.userId === createForm.revieweeId)
+      if (match) {
+        createdOrUpdated.revieweeProfile = match.revieweeProfile
+      }
 
       setReviews((prev) => {
         const idx = prev.findIndex((x) => x.revieweeId === createdOrUpdated.revieweeId)
@@ -171,6 +253,9 @@ export function ReviewsManagement() {
         rating: editForm.rating,
         comment: editForm.comment || undefined,
       })
+
+      updated.revieweeProfile = editing.revieweeProfile
+
       setReviews((prev) => prev.map((x) => (x.id === editing.id ? updated : x)))
       setEditing(null)
     } catch (e) {
@@ -185,9 +270,8 @@ export function ReviewsManagement() {
     setError(null)
     try {
       await reviewsApi.delete(id)
-      setReviews((prev) => prev.filter((x) => x.id !== id))
-      // sync reviewedSet ด้วย (ลบออกเพื่อให้กลับไปเลือกใน create ได้)
       const after = reviews.filter((x) => x.id !== id)
+      setReviews(after)
       setReviewedSet(new Set(after.map((r) => r.revieweeId)))
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to delete review")
@@ -247,7 +331,9 @@ export function ReviewsManagement() {
 
   if (!mounted) return null
 
-  const selectableOptions = matchOptions.filter((opt) => !reviewedSet.has(opt.userId))
+  const selectableOptions = matchOptions
+  .filter(opt => !!opt.userId)
+  .filter(opt => !reviewedSet.has(opt.userId))
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -289,12 +375,19 @@ export function ReviewsManagement() {
                   onChange={(e) => setCreateForm((p) => ({ ...p, revieweeId: e.target.value }))}
                 >
                   <option value="">-- Select --</option>
-                  {selectableOptions.map((opt) => (
-                    <option key={opt.userId} value={opt.userId}>
-                      {opt.name && opt.name.trim().length > 0 ? opt.name : "Unknown user"}
-                    </option>
-                  ))}
+                  {selectableOptions.map((opt) => {
+                    const displayName =
+                      opt.revieweeProfile
+                        ? `${opt.revieweeProfile.firstName || ""} ${opt.revieweeProfile.lastName || ""}`.trim()
+                        : opt.name || "Unknown user"
+                    return (
+                      <option key={opt.userId} value={opt.userId}>
+                        {displayName}
+                      </option>
+                    )
+                  })}
                 </select>
+
                 {selectableOptions.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
                     You have reviewed all matched users. Use “Edit” below to update an existing review.
